@@ -4,8 +4,8 @@ Name: ui/panel_info.py
 Purpose: provide one generous help source for the panel Info tab and the standalone Help command.
 Main behavior: selects Spanish or English from the active FreeCAD language preference and exposes read-only help text.
 Modification notes: keep one source of help content; do not duplicate a second divergent manual in command code.
-Version: 2026-08-21-help-ai-context-v2
-Date and time: 2026-08-21 08:24 -06:00
+Version: 2026-08-22-castle-config-v1
+Date and time: 2026-08-22 10:58 -06:00
 """
 
 # Qt compatibility for FreeCAD 1.x (PySide6) and older builds.
@@ -130,13 +130,13 @@ Se distinguen dos efectos. Espejo real usa la extension de Castle basada en Rend
 Pulido / reflectante conserva el material o textura y aumenta el componente especular y el brillo. Es adecuado para porcelanato, pisos pulidos y metales. Esta primera implementacion no pretende reemplazar un material PBR completo ni una reflexion ambiental fisicamente correcta. Los efectos deben considerarse experimentales hasta verificarlos visualmente en Castle Model Viewer.
 
 9. CASTLE MODEL VIEWER
-Castle Model Viewer permite inspeccionar el X3D de forma interactiva. Desde FreeCAD puede configurarse la ruta del visor y lanzar el archivo exportado. El visor tambien permite probar opciones de iluminacion, sombreado y rendimiento sin alterar el modelo original.
+Castle Model Viewer permite inspeccionar el X3D de forma interactiva. Desde FreeCAD puede configurarse la ruta del visor y lanzar el archivo exportado. Si la ruta no existe o deja de ser valida, Ejecutar en Castle abre automaticamente un selector para ubicar el ejecutable y guarda la seleccion. La ruta tambien puede cambiarse en Game Engine Export > Configuracion > Castle Engine > Ejecutable. El visor tambien permite probar opciones de iluminacion, sombreado y rendimiento sin alterar el modelo original.
 
 10. DIAGNOSTICO CASTLE
 Diagnostico Castle analiza el X3D, puede ejecutar castle-model-converter --validate, recopila informacion de geometria, luces y registros y guarda resultados en una carpeta _castle_debug junto al X3D. El stdout/stderr del visor se conserva separado del registro nativo de Castle para no perder informacion. En modos interactivo/captura el manifiesto comienza como started y se actualiza a completed o failed cuando Castle termina; en captura tambien registra si la imagen solicitada realmente existe. El diagnostico debe ser de solo lectura respecto al X3D fuente.
 
 11. PROBLEMAS FRECUENTES
-- Castle no abre: revise la ruta del ejecutable.
+- Castle no abre: use Ejecutar en Castle para volver a seleccionar el ejecutable o cambielo en Configuracion > Castle Engine > Ejecutable.
 - La escena aparece oscura: revise luces, perfiles, materiales y limites de luces por objeto.
 - Los colores cambian: compare Material de FreeCAD, propiedades X3D y ajustes del visor.
 - La textura no aparece: revise ruta, objeto destino, UV y archivos copiados a assets.
@@ -201,13 +201,13 @@ The two effects are intentionally different. True mirror uses Castle's RenderedT
 Polished / reflective preserves the material or texture while increasing specular response and shininess. It is intended for polished tile, floors and metals. This first implementation is not a complete PBR material or physically accurate environment reflection. Both effects remain experimental until visually verified in Castle Model Viewer.
 
 9. CASTLE MODEL VIEWER
-Castle Model Viewer lets you inspect X3D interactively. FreeCAD can store the viewer path and launch the exported file. The viewer is also useful for testing lighting, shading and performance options without altering the source model.
+Castle Model Viewer lets you inspect X3D interactively. FreeCAD can store the viewer path and launch the exported file. If the path is missing or no longer valid, Run in Castle automatically opens a file picker and saves the selected executable. The path can also be changed under Game Engine Export > Configuration > Castle Engine > Executable. The viewer is also useful for testing lighting, shading and performance options without altering the source model.
 
 10. CASTLE DIAGNOSTICS
 Castle Diagnostics analyzes X3D, can run castle-model-converter --validate, collects geometry/light/log information and stores results in a _castle_debug folder next to the X3D. Viewer stdout/stderr is kept separate from the native Castle log so neither source overwrites the other. In interactive/capture modes the manifest starts as started and is updated to completed or failed when Castle exits; capture mode also records whether the requested screenshot actually exists. Diagnostics must remain read-only with respect to the source X3D.
 
 11. COMMON PROBLEMS
-- Castle does not open: check the executable path.
+- Castle does not open: use Run in Castle to select the executable again, or change it under Configuration > Castle Engine > Executable.
 - The scene is too dark: review lights, profiles, materials and per-shape light limits.
 - Colors look different: compare FreeCAD Material, X3D properties and viewer settings.
 - A texture is missing: check file path, target object, UV mapping and copied asset files.

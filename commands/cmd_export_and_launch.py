@@ -3,7 +3,7 @@
 Descripcion: reutiliza el X3D existente cuando la escena y la configuracion no
 han cambiado desde la ultima exportacion. Si detecta cambios, genera un X3D
 nuevo antes de lanzar Castle.
-Fecha y hora: 2026-08-13 10:35 America/Costa_Rica.
+Fecha y hora: 2026-08-22 10:58 America/Costa_Rica.
 Instrucciones clave:
 - Mantener codigo, comentarios y mensajes en ASCII.
 - No usar solamente fechas del FCStd: tambien existen cambios sin guardar.
@@ -428,14 +428,8 @@ class CommandClass:
             )
             return
 
-        cge_path = panel.cge_path_line.text().strip()
-        if not cge_path or not os.path.isfile(cge_path):
-            FreeCAD.Console.PrintError(
-                "[GAMEEXPORT] Castle executable is not configured or does not exist. "
-                "Open the export panel and configure it once.\n"
-            )
+        if not panel._ensure_castle_executable(prompt_if_missing=True):
             return
-        panel.cge_path = cge_path
 
         x3d_path = _current_x3d_path(panel, panel_module)
         try:

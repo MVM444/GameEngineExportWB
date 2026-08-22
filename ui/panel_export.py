@@ -2,7 +2,7 @@
 
 Descripcion rapida: panel para escoger objetos, ruta y ejecutar la exportacion X3D.
 Fecha y hora: 2025-10-13 19:00 UTC.
-Revision: 2026-08-21 08:24 -06:00 - privacy-safe logs and Quick Example ground isolation.
+Revision: 2026-08-22 10:58 -06:00 - guided Castle executable configuration.
 Instrucciones clave:
 - Trabajar con listas de objetos disponibles y seleccionados.
 - Leer configuracion previa desde ParamGet y permitir ajustes rapidos.
@@ -154,7 +154,7 @@ def _is_quick_example_document(doc) -> bool:
         if "GEE_QuickExampleObject" in props or "GEE_QuickExampleRoot" in props:
             return True
     return str(getattr(doc, "Name", "") or "").startswith("GameEngineExport_QuickExample")
-DEBUG_VERSION = "2026-08-19-materials-mirror-v1"
+DEBUG_VERSION = "2026-08-22-castle-config-v1"
 ARCHITECTURAL_PROFILE_VERSION = "architectural-complete-v5"
 ARCHITECTURAL_CGE_LIGHT_RADIUS_M = 4.0
 ARCHITECTURAL_GLOBAL_AMBIENT = 0.12
@@ -1469,7 +1469,16 @@ class ExportTaskPanel:
         btn_cge_browse = QtGui.QPushButton(i18n.bi("Examinar", "Browse"))
         btn_cge_browse.clicked.connect(self._browse_cge_path)
         cge_layout.addWidget(btn_cge_browse, 0, 2)
-        self._add_skybox_controls(cge_layout, 1)
+        cge_hint = QtGui.QLabel(
+            i18n.bi(
+                "La ruta se guarda para futuros usos. Si falta o deja de existir, Ejecutar en Castle la solicitara automaticamente.",
+                "The path is saved for future use. If it is missing or stops existing, Run in Castle will request it automatically.",
+            )
+        )
+        cge_hint.setWordWrap(True)
+        cge_hint.setStyleSheet("color: #475569;")
+        cge_layout.addWidget(cge_hint, 1, 0, 1, 3)
+        self._add_skybox_controls(cge_layout, 2)
         layout.addWidget(cge_group)
 
         layout.addStretch()
@@ -2155,20 +2164,136 @@ class ExportTaskPanel:
         if selected:
             self.output_dir_line.setText(selected)
 
-    def _browse_cge_path(self):
-        start = self.cge_path_line.text().strip() or os.path.expanduser("~")
-        selected, _ = QtGui.QFileDialog.getOpenFileName(
-            self.widget,
-            i18n.bi("Seleccionar ejecutable Castle", "Select Castle executable"),
-            start,
+    def _dialog_parent(self):
+        """Return a visible parent for modal dialogs, including one-click commands."""
+        try:
+            if self.widget is not None and self.widget.isVisible():
+                return self.widget
+        except Exception:
+            pass
+        try:
+            return FreeCADGui.getMainWindow()
+        except Exception:
+            return self.widget
+
+    def _castle_config_location_text(self):
+        return i18n.bi(
+            "Tambien puede cambiarla en Game Engine Export > Configuracion > Castle Engine > Ejecutable.",
+            "You can also change it in Game Engine Export > Configuration > Castle Engine > Executable.",
         )
+
+    def _castle_browse_start(self):
+        current = self.cge_path_line.text().strip()
+        if current:
+            candidate = Path(current).expanduser()
+            if candidate.is_dir():
+                return str(candidate)
+            try:
+                parent = candidate.parent
+                if parent.is_dir():
+                    return str(parent)
+            except Exception:
+                pass
+        return os.path.expanduser("~")
+
+    def _select_castle_executable(self):
+        """Ask for Castle executable, persist it immediately, and return the selected path."""
+        selected, _ = QtGui.QFileDialog.getOpenFileName(
+            self._dialog_parent(),
+            i18n.bi("Seleccionar ejecutable Castle", "Select Castle executable"),
+            self._castle_browse_start(),
+        )
+        selected = str(selected or "").strip()
+        if not selected:
+            return ""
+        if not os.path.isfile(selected):
+            FreeCAD.Console.PrintWarning(
+                "[GAMEEXPORT][WARN] Selected Castle executable is not a file\n"
+            )
+            return ""
+
+        self.cge_path_line.setText(selected)
+        self.cge_path = selected
+        self.params.SetString("cge_path", selected)
+        FreeCAD.Console.PrintMessage(
+            "[GAMEEXPORT] Castle executable configured: "
+            + _safe_path_label(selected)
+            + "\n"
+        )
+        if not exporter_x3d.detect_skybox_faces(self.skybox_dir_line.text().strip()):
+            detected = self._discover_skybox_dir()
+            if detected:
+                self.skybox_dir_line.setText(detected)
+        self._update_skybox_status()
+        return selected
+
+    def _browse_cge_path(self):
+        self._select_castle_executable()
+
+    def _ensure_castle_executable(self, prompt_if_missing=True):
+        """Ensure Castle is configured; optionally guide the user to select it."""
+        candidate = self.cge_path_line.text().strip()
+        if candidate and os.path.isfile(candidate):
+            self.cge_path = candidate
+            if self.params.GetString("cge_path", "") != candidate:
+                self.params.SetString("cge_path", candidate)
+            return True
+
+        if not prompt_if_missing:
+            return False
+
+        if candidate:
+            reason = i18n.bi(
+                "La ruta guardada para Castle Model Viewer ya no existe.",
+                "The saved Castle Model Viewer path no longer exists.",
+            )
+        else:
+            reason = i18n.bi(
+                "Castle Model Viewer no esta configurado.",
+                "Castle Model Viewer is not configured.",
+            )
+
+        message = (
+            reason
+            + "\n\n"
+            + i18n.bi(
+                "Se abrira una ventana para seleccionar el ejecutable. La ruta elegida quedara guardada para futuros usos.",
+                "A file picker will open so you can select the executable. The selected path will be saved for future use.",
+            )
+            + "\n\n"
+            + self._castle_config_location_text()
+        )
+        try:
+            QtGui.QMessageBox.information(
+                self._dialog_parent(),
+                i18n.bi("Configurar Castle Model Viewer", "Configure Castle Model Viewer"),
+                message,
+            )
+        except Exception as exc:
+            FreeCAD.Console.PrintWarning(
+                "[GAMEEXPORT][WARN] Could not show Castle configuration message: "
+                + str(exc)
+                + "\n"
+            )
+
+        selected = self._select_castle_executable()
         if selected:
-            self.cge_path_line.setText(selected)
-            if not exporter_x3d.detect_skybox_faces(self.skybox_dir_line.text().strip()):
-                detected = self._discover_skybox_dir()
-                if detected:
-                    self.skybox_dir_line.setText(detected)
-            self._update_skybox_status()
+            return True
+
+        status_text = i18n.bi(
+            "Castle no configurado. Puede configurarlo en Configuracion > Castle Engine > Ejecutable.",
+            "Castle is not configured. Configure it under Configuration > Castle Engine > Executable.",
+        )
+        try:
+            self.status_label.setText(status_text)
+        except Exception:
+            pass
+        FreeCAD.Console.PrintWarning(
+            "[GAMEEXPORT][WARN] Castle launch cancelled; executable is not configured. "
+            + self._castle_config_location_text()
+            + "\n"
+        )
+        return False
 
     def _create_gamestart(self):
         doc = FreeCAD.ActiveDocument
@@ -3472,18 +3597,16 @@ class ExportTaskPanel:
         return True
 
     def _launch_castle_engine(self, file_path):
+        if not self._ensure_castle_executable(prompt_if_missing=True):
+            return False
         cge_path = self.cge_path.strip()
-        if not cge_path:
-            FreeCAD.Console.PrintError("[GAMEEXPORT] Castle Engine path not configured\n")
-            return
-        if not os.path.isfile(cge_path):
-            FreeCAD.Console.PrintError("[GAMEEXPORT] Castle Engine executable not found\n")
-            return
         try:
             subprocess.Popen([cge_path, file_path])
             FreeCAD.Console.PrintMessage("[GAMEEXPORT] Launching Castle Engine\n")
+            return True
         except Exception as exc:
             FreeCAD.Console.PrintError("[GAMEEXPORT] Failed to launch Castle Engine: " + str(exc) + "\n")
+            return False
 
 
 __all__ = ["ExportTaskPanel"]
