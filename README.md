@@ -28,17 +28,17 @@ The UI is being migrated to true Spanish/English localization using FreeCAD/Qt t
 
 ## Instalacion / Installation
 
-El Addon esta preparado para vivir en un repositorio dedicado cuya raiz sea esta misma carpeta. El repositorio remoto dedicado todavia debe ser creado y validado antes de usarlo como repositorio personalizado en Addon Manager.
+El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB` y su rama principal es `main`. La raiz del repositorio contiene directamente los archivos del Workbench.
 
-The Addon is prepared for a dedicated repository whose root is this folder. The dedicated remote repository still needs to be created and validated before it can be used as an Addon Manager custom repository.
-
-Cuando el mantenedor publique el repositorio dedicado:
+The dedicated public repository is `https://github.com/MVM444/GameEngineExportWB`, with `main` as its default branch. The repository root directly contains the Workbench files.
 
 1. Abra **Tools > Addon Manager** en FreeCAD 1.1.3.
-2. Agregue el repositorio indicado por el mantenedor en **Custom Repositories**.
+2. Agregue `https://github.com/MVM444/GameEngineExportWB` con la rama `main` en **Custom Repositories**.
 3. Instale **GameEngineExportWB**, reinicie FreeCAD y seleccione **Game Engine Export WB**.
 
-Para una prueba local de desarrollo, copie o enlace la carpeta completa como `GameEngineExportWB` dentro del directorio de modulos de usuario de FreeCAD. Castle Model Viewer es opcional: su ausencia no debe impedir la carga del Workbench.
+Addon Manager administra la instalacion y las actualizaciones desde ese repositorio; no es necesario copiar manualmente recursos a `Mod`. Castle Model Viewer es una dependencia externa opcional: su ausencia no impide cargar el Workbench.
+
+Addon Manager manages installation and updates from that repository; manually copying resources into `Mod` is unnecessary. Castle Model Viewer is an optional external dependency: its absence does not prevent the Workbench from loading.
 
 ## Abrir el proyecto en Visual Studio Code
 

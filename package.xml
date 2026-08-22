@@ -7,7 +7,7 @@
   <maintainer email="">Marco Vinicio Mora Fallas</maintainer>
   <license file="LICENSE">MIT</license>
   <url type="repository" branch="main">https://github.com/MVM444/GameEngineExportWB</url>
-  <url type="readme">https://github.com/MVM444/GameEngineExportWB/blob/main/README.md</url>
+  <url type="readme">https://github.com/MVM444/GameEngineExportWB/raw/main/README.md</url>
   <url type="bugtracker">https://github.com/MVM444/GameEngineExportWB/issues</url>
   <icon>resources/icons/gameexport.svg</icon>
   <content>
