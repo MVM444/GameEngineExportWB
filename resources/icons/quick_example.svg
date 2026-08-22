@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="terrain" x1="8" y1="48" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4f7f43"/>
+      <stop offset="1" stop-color="#83a95b"/>
+    </linearGradient>
+    <linearGradient id="wall" x1="18" y1="20" x2="48" y2="47" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d8dde3"/>
+      <stop offset="1" stop-color="#8f9aa6"/>
+    </linearGradient>
+  </defs>
+  <path d="M6 50 C15 43 20 55 29 48 C37 42 44 51 58 45 L58 59 L6 59 Z" fill="url(#terrain)" stroke="#2f5f36" stroke-width="2"/>
+  <path d="M17 29 L32 17 L48 29" fill="none" stroke="#34495e" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20 29 H46 V48 H20 Z" fill="url(#wall)" stroke="#34495e" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M29 48 V36 H37 V48" fill="#7b4a26" stroke="#34495e" stroke-width="2"/>
+  <path d="M22 34 H28 V40 H22 Z" fill="#6bb7d8" stroke="#34495e" stroke-width="2"/>
+  <path d="M39 34 H45 V40 H39 Z" fill="#6bb7d8" stroke="#34495e" stroke-width="2"/>
+  <path d="M49 13 L55 13 L50 22 L57 22 L46 36 L50 26 L44 26 Z" fill="#f1c40f" stroke="#8a6d00" stroke-width="1.5" stroke-linejoin="round"/>
+</svg>

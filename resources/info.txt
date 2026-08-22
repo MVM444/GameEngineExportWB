@@ -1,0 +1,55 @@
+﻿GameEngineExport Workbench
+Versión: 2025.10.14
+Autor: Ing. Marco Vinicio Mora Fallas
+Colaboración IA: ChatGPT (asistente técnico, 99.9%)
+Lenguaje: Python 3.x para FreeCAD 1.0+
+
+─────────────────────────────────────────────
+DESCRIPCIÓN / DESCRIPTION
+Este Workbench permite exportar modelos de FreeCAD
+a formato X3D optimizado para Castle Game Engine (CGE).
+Incluye herramientas para gestionar la escena, materiales,
+luces globales y de objeto, así como el punto de inicio (GameStart).
+
+The GameEngineExport Workbench exports FreeCAD models
+to the X3D format, fully compatible with Castle Game Engine.
+It provides scene management, material setup, lighting control,
+and GameStart viewpoint generation.
+
+─────────────────────────────────────────────
+FUNCIONALIDAD PRINCIPAL / MAIN FEATURES
+• Exportación X3D con conversión mm → m y rotación de eje.
+• Inserción automática de Background, NavigationInfo y Viewpoint.
+• Luz global configurable (yaw, pitch, intensidad, color).
+• Adición de luminarias como PointLights.
+• GameStart interactivo con orientación y FOV ajustable.
+• Archivo de configuración lateral (*.gee.json) por proyecto.
+
+─────────────────────────────────────────────
+COMPATIBILIDAD / COMPATIBILITY
+✔ FreeCAD 1.0 o superior.
+✔ Castle Game Engine 7.x o superior.
+✔ Windows 10+ / Linux / macOS.
+
+─────────────────────────────────────────────
+LICENCIA / LICENSE
+Software libre bajo licencia CC BY-SA 4.0.
+Puede copiarse, modificarse y redistribuirse
+con atribución al autor original.
+
+─────────────────────────────────────────────
+AGRADECIMIENTOS / CREDITS
+Desarrollado por:
+Ing. Marco Vinicio Mora Fallas
+con asistencia de ChatGPT (OpenAI) como copiloto técnico.
+
+─────────────────────────────────────────────
+NOTAS / NOTES
+Proyecto en desarrollo continuo.
+Próximas versiones incluirán:
+• Panel ampliado de materiales.
+• Conversión automática de luces según latitud y hora solar.
+• Exportación directa al formato .castle-scene.
+
+─────────────────────────────────────────────
+© 2025 Marco V. Mora F. – Todos los derechos reservados.

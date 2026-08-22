@@ -1,0 +1,25 @@
+"""Crear ventanas BIM desde el sketch seleccionado.
+
+Seleccione un Sketch con lineas de centro de buques de ventana y ejecute la macro.
+Cada linea se convierte en una ventana BIM o en geometria fallback marcada.
+"""
+
+from __future__ import annotations
+
+import os
+import runpy
+
+import FreeCAD
+
+
+HELPER = os.path.join(
+    os.path.dirname(__file__),
+    "bim_from_selected_sketch.py",
+)
+
+if not os.path.exists(HELPER):
+    raise RuntimeError("No se encontro helper BIM desde sketch: " + HELPER)
+
+namespace = runpy.run_path(HELPER)
+FreeCAD.Console.PrintMessage("[BIM-SKETCH] Ejecutando ventanas desde sketch seleccionado\n")
+namespace["run"]("windows")

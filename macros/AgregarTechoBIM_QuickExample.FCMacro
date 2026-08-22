@@ -1,0 +1,644 @@
+"""Agregar techo sencillo al ultimo Quick Example de GameEngineExportWB.
+
+Uso:
+1. Genere o importe una casa/oficina con "Quick Example" o "Importar JSON".
+2. Ejecute esta macro.
+
+La macro lee GEE_ContextJSON cuando existe, calcula la huella rectangular
+del edificio y crea un techo a dos aguas como solido Part exportable a X3D.
+No intenta crear todavia un techo BIM complejo: prioriza robustez.
+"""
+
+from __future__ import annotations
+
+import json
+
+import FreeCAD
+import Part
+
+try:
+    import FreeCADGui
+except Exception:
+    FreeCADGui = None
+
+
+LOG_PREFIX = "[GEE-ROOF] "
+ROOT_PREFIX = "GEE_QuickExample_"
+OUTPUT_GROUP_NAME = "GEE_Roof"
+
+DEFAULT_OVERHANG_MM = 600.0
+DEFAULT_RIDGE_RISE_MM = 1800.0
+DEFAULT_THICKNESS_MM = 120.0
+DEFAULT_WALL_HEIGHT_MM = 3000.0
+DEFAULT_WIDTH_MM = 12000.0
+DEFAULT_DEPTH_MM = 9000.0
+DEFAULT_COLOR = (0.38, 0.16, 0.10)  # teja oscura
+
+
+def _msg(text):
+    FreeCAD.Console.PrintMessage(LOG_PREFIX + str(text) + "\n")
+
+
+def _warn(text):
+    FreeCAD.Console.PrintWarning(LOG_PREFIX + str(text) + "\n")
+
+
+def _err(text):
+    FreeCAD.Console.PrintError(LOG_PREFIX + str(text) + "\n")
+
+
+def _safe_name(text):
+    value = str(text).strip()
+    for old, new in {
+        " ": "_",
+        "-": "_",
+        "/": "_",
+        "\\": "_",
+        ".": "_",
+        "(": "",
+        ")": "",
+    }.items():
+        value = value.replace(old, new)
+    return "".join(ch for ch in value if ch.isalnum() or ch == "_") or "Object"
+
+
+def _set_prop(obj, prop_type, name, group, desc, value):
+    try:
+        if not hasattr(obj, name):
+            obj.addProperty(prop_type, name, group, desc)
+        setattr(obj, name, value)
+    except Exception:
+        pass
+
+
+def _set_view(obj, color=None, transparency=None):
+    try:
+        if color is not None:
+            obj.ViewObject.ShapeColor = color
+            obj.ViewObject.LineColor = color
+        if transparency is not None:
+            obj.ViewObject.Transparency = int(transparency)
+    except Exception:
+        pass
+
+
+def _walk(obj):
+    pending = [obj]
+    seen = set()
+    while pending:
+        current = pending.pop()
+        name = str(getattr(current, "Name", ""))
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        yield current
+        pending.extend(list(getattr(current, "Objects", []) or []))
+        pending.extend(list(getattr(current, "Group", []) or []))
+        pending.extend(list(getattr(current, "OutList", []) or []))
+
+
+def _is_quick_root(obj):
+    name = str(getattr(obj, "Name", ""))
+    label = str(getattr(obj, "Label", ""))
+    props = set(getattr(obj, "PropertiesList", []) or [])
+    return name.startswith(ROOT_PREFIX) or label.startswith(ROOT_PREFIX) or "GEE_ContextJSON" in props
+
+
+def _is_quick_member(obj):
+    props = set(getattr(obj, "PropertiesList", []) or [])
+    if "GEE_QuickExampleObject" in props or "GEE_QuickExampleRoot" in props:
+        return True
+    name = str(getattr(obj, "Name", ""))
+    label = str(getattr(obj, "Label", ""))
+    return (
+        name.startswith("GEE_SK_")
+        or label.startswith("GEE SK ")
+        or name.startswith("GEE_ArchWall_")
+        or name.startswith("GEE_Cutter_")
+        or name.startswith("GEE_Terrain_")
+        or name.startswith("GEE_Building_Floor_")
+        or "Contexto_QuickExample" in name
+        or "Contexto_QuickExample" in label
+    )
+
+
+def _is_exterior_wall_sketch(obj):
+    type_id = str(getattr(obj, "TypeId", ""))
+    if "Sketch" not in type_id:
+        return False
+    name = str(getattr(obj, "Name", ""))
+    label = str(getattr(obj, "Label", ""))
+    role = str(getattr(obj, "GEE_Role", getattr(obj, "Role", "")))
+    return (
+        role == "exterior_wall_axis"
+        or "GEE_SK_ExteriorWalls" in name
+        or "GEESKExteriorWalls" in name
+        or "Exterior Walls" in label
+        or "ExteriorWalls" in label
+        or label == "GEE SK Exterior Walls"
+    )
+
+
+def _root_from_member(obj):
+    props = set(getattr(obj, "PropertiesList", []) or [])
+    if "GEE_QuickExampleRoot" in props:
+        root_name = str(getattr(obj, "GEE_QuickExampleRoot", ""))
+        doc = getattr(obj, "Document", None) or FreeCAD.ActiveDocument
+        if doc is not None and root_name:
+            root = doc.getObject(root_name)
+            if root is not None:
+                return root
+    return None
+
+
+def _root_from_object(obj):
+    pending = [obj]
+    seen = set()
+    while pending:
+        current = pending.pop(0)
+        name = str(getattr(current, "Name", ""))
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        if _is_quick_root(current):
+            return current
+        member_root = _root_from_member(current)
+        if member_root is not None:
+            return member_root
+        pending.extend(list(getattr(current, "InList", []) or []))
+    return None
+
+
+def _group_quick_score(group):
+    if str(getattr(group, "TypeId", "")) != "App::DocumentObjectGroup":
+        return 0
+    score = 0
+    for child in _walk(group):
+        if child is group:
+            continue
+        if _is_quick_root(child):
+            score += 5
+        if _is_quick_member(child):
+            score += 2
+        role = str(getattr(child, "GEE_Role", getattr(child, "Role", "")))
+        if role in {
+            "exterior_wall_axis",
+            "interior_wall_axis",
+            "door_opening_axis",
+            "window_opening_axis",
+            "exterior_wall",
+            "interior_wall",
+        }:
+            score += 2
+    return score
+
+
+def _has_imported_quick_example_layout(doc):
+    names = {str(getattr(obj, "Name", "")) for obj in doc.Objects}
+    labels = {str(getattr(obj, "Label", "")) for obj in doc.Objects}
+    has_context = any("Contexto_QuickExample" in value for value in names | labels)
+    has_archwalls = "ArchWalls" in names or "ArchWalls" in labels
+    has_site = "SiteAndFloors" in names or "SiteAndFloors" in labels
+    has_exterior_sketch = any(_is_exterior_wall_sketch(obj) for obj in doc.Objects)
+    return has_context or has_archwalls or has_site or has_exterior_sketch
+
+
+def _find_latest_root(doc):
+    if FreeCADGui is not None:
+        try:
+            for obj in FreeCADGui.Selection.getSelection():
+                root = _root_from_object(obj)
+                if root is not None:
+                    return root
+        except Exception:
+            pass
+
+    roots = [obj for obj in doc.Objects if _is_quick_root(obj)]
+    for obj in doc.Objects:
+        member_root = _root_from_member(obj)
+        if member_root is not None and member_root not in roots:
+            roots.append(member_root)
+
+    # JSON import can create the expected groups as document-level siblings
+    # instead of placing them below a single GEE_QuickExample_* root group.
+    # In that layout the document itself is the correct search scope.
+    if not roots:
+        if _has_imported_quick_example_layout(doc):
+            _warn("Usando documento completo como alcance porque el JSON importado no tiene grupo raiz GEE_QuickExample_.")
+            return doc
+
+        groups = [obj for obj in doc.Objects if str(getattr(obj, "TypeId", "")) == "App::DocumentObjectGroup"]
+        scored = [(group, _group_quick_score(group)) for group in groups]
+        roots = [
+            group
+            for group, score in scored
+            if score >= 4 and "DoorsWindows" not in str(getattr(group, "Name", "")) + str(getattr(group, "Label", ""))
+        ]
+        if roots:
+            _warn("Raiz detectada por contenido GEE, no por nombre/propiedad directa.")
+
+    if not roots:
+        context_objects = [
+            obj
+            for obj in doc.Objects
+            if "Contexto_QuickExample" in str(getattr(obj, "Name", ""))
+            or "Contexto_QuickExample" in str(getattr(obj, "Label", ""))
+        ]
+        for context in context_objects:
+            root = _root_from_object(context)
+            if root is not None and root not in roots:
+                roots.append(root)
+
+    if not roots:
+        return None
+
+    def sort_key(obj):
+        text = str(getattr(obj, "Name", "")) + "_" + str(getattr(obj, "Label", ""))
+        digits = "".join(ch for ch in text if ch.isdigit())
+        score = _group_quick_score(obj) if str(getattr(obj, "TypeId", "")) == "App::DocumentObjectGroup" else 0
+        return (int(digits[-12:] or 0), score)
+
+    return sorted(roots, key=sort_key)[-1]
+
+
+def _remove_object_tree(doc, obj):
+    names = [child.Name for child in _walk(obj) if getattr(child, "Name", None)]
+    for name in reversed(names):
+        try:
+            if doc.getObject(name) is not None:
+                doc.removeObject(name)
+        except Exception:
+            pass
+
+
+def _prepare_output_group(doc, root):
+    children = list(getattr(root, "Group", []) or [])
+    if hasattr(root, "Objects"):
+        children = list(getattr(root, "Objects", []) or [])
+    for child in children:
+        name = str(getattr(child, "Name", ""))
+        label = str(getattr(child, "Label", ""))
+        if name == OUTPUT_GROUP_NAME or label == OUTPUT_GROUP_NAME:
+            _remove_object_tree(doc, child)
+    group = doc.addObject("App::DocumentObjectGroup", OUTPUT_GROUP_NAME)
+    group.Label = OUTPUT_GROUP_NAME
+    if hasattr(root, "addObject") and not hasattr(root, "Objects"):
+        root.addObject(group)
+    _tag_object(group, root, "roof_group")
+    return group
+
+
+def _extract_json(text):
+    if not text:
+        return None
+    raw = str(text)
+    start = raw.find("{")
+    end = raw.rfind("}")
+    if start < 0 or end <= start:
+        return None
+    try:
+        return json.loads(raw[start : end + 1])
+    except Exception as exc:
+        _warn("No se pudo leer GEE_ContextJSON: %s" % exc)
+        return None
+
+
+def _read_context_payload(root):
+    props = set(getattr(root, "PropertiesList", []) or [])
+    if "GEE_ContextJSON" in props:
+        payload = _extract_json(getattr(root, "GEE_ContextJSON", ""))
+        if payload:
+            return payload
+
+    for obj in _walk(root):
+        label = str(getattr(obj, "Label", ""))
+        name = str(getattr(obj, "Name", ""))
+        if "Contexto_QuickExample" not in label and "Contexto_QuickExample" not in name:
+            continue
+        payload = _extract_json(getattr(obj, "Text", ""))
+        if payload:
+            return payload
+        payload = _extract_json(getattr(obj, "JSON", ""))
+        if payload:
+            return payload
+    return {}
+
+
+def _float_from(mapping, key, default):
+    try:
+        return float(mapping.get(key, default))
+    except Exception:
+        return float(default)
+
+
+def _iter_sketch_segments(sketch):
+    placement = getattr(sketch, "Placement", FreeCAD.Placement())
+    for index, geo in enumerate(list(getattr(sketch, "Geometry", []) or [])):
+        try:
+            if hasattr(sketch, "getConstruction") and sketch.getConstruction(index):
+                continue
+        except Exception:
+            pass
+        if not hasattr(geo, "StartPoint") or not hasattr(geo, "EndPoint"):
+            continue
+        p1 = placement.multVec(geo.StartPoint)
+        p2 = placement.multVec(geo.EndPoint)
+        if p1.distanceToPoint(p2) > 50.0:
+            yield [p1.x, p1.y, p2.x, p2.y]
+
+
+def _segments_from_root_sketch(root):
+    for obj in _walk(root):
+        if _is_exterior_wall_sketch(obj):
+            return list(_iter_sketch_segments(obj))
+    return []
+
+
+def _find_exterior_wall_sketch(root):
+    for obj in _walk(root):
+        if _is_exterior_wall_sketch(obj):
+            return obj
+    return None
+
+
+def _footprint_from_payload(payload):
+    dimensions = dict(payload.get("dimensions", {}) or {})
+    width = _float_from(dimensions, "width_mm", DEFAULT_WIDTH_MM)
+    depth = _float_from(dimensions, "depth_mm", DEFAULT_DEPTH_MM)
+    segments = dict(payload.get("segments", {}) or {})
+    exterior = list(segments.get("exterior_walls", []) or [])
+
+    xs = []
+    ys = []
+    for segment in exterior:
+        if not isinstance(segment, (list, tuple)) or len(segment) != 4:
+            continue
+        try:
+            x1, y1, x2, y2 = [float(v) for v in segment]
+        except Exception:
+            continue
+        xs.extend([x1, x2])
+        ys.extend([y1, y2])
+
+    if xs and ys:
+        return min(xs), min(ys), max(xs), max(ys)
+    return 0.0, 0.0, width, depth
+
+
+def _footprint_from_root(root):
+    segments = _segments_from_root_sketch(root)
+    xs = []
+    ys = []
+    for segment in segments:
+        try:
+            x1, y1, x2, y2 = [float(v) for v in segment]
+        except Exception:
+            continue
+        xs.extend([x1, x2])
+        ys.extend([y1, y2])
+    if xs and ys:
+        return min(xs), min(ys), max(xs), max(ys)
+    return None
+
+
+def _combine_footprints(footprints):
+    valid = [fp for fp in footprints if fp is not None]
+    if not valid:
+        return None
+    return (
+        min(fp[0] for fp in valid),
+        min(fp[1] for fp in valid),
+        max(fp[2] for fp in valid),
+        max(fp[3] for fp in valid),
+    )
+
+
+def _is_building_shape_candidate(obj):
+    type_id = str(getattr(obj, "TypeId", ""))
+    if "Sketch" in type_id or type_id == "App::DocumentObjectGroup":
+        return False
+    name = str(getattr(obj, "Name", "")).lower()
+    label = str(getattr(obj, "Label", "")).lower()
+    role = str(getattr(obj, "GEE_Role", getattr(obj, "Role", ""))).lower()
+    text = " ".join([name, label, role])
+
+    excluded = (
+        "terrain",
+        "cutter",
+        "opening",
+        "roof",
+        "contexto",
+        "context",
+        "door",
+        "window",
+        "sketch",
+        "profile",
+        "glass",
+    )
+    if any(token in text for token in excluded):
+        return False
+
+    included = (
+        "archwall",
+        "arch_wall",
+        "wall",
+        "muro",
+        "floor",
+        "slab",
+        "losa",
+        "building_floor",
+        "structure",
+    )
+    if any(token in text for token in included):
+        return True
+
+    # Ultimo respaldo: cualquier solido principal dentro del grupo del ejemplo.
+    shape = getattr(obj, "Shape", None)
+    if shape is None:
+        return False
+    try:
+        bbox = shape.BoundBox
+        return bbox.XLength > 100.0 and bbox.YLength > 100.0 and bbox.ZLength > 20.0
+    except Exception:
+        return False
+
+
+def _building_bbox_from_root(root):
+    xs = []
+    ys = []
+    z_max = None
+    used = []
+    for obj in _walk(root):
+        if obj is root or not _is_building_shape_candidate(obj):
+            continue
+        shape = getattr(obj, "Shape", None)
+        if shape is None:
+            continue
+        try:
+            bbox = shape.BoundBox
+            if bbox.XLength <= 1.0 or bbox.YLength <= 1.0:
+                continue
+            xs.extend([float(bbox.XMin), float(bbox.XMax)])
+            ys.extend([float(bbox.YMin), float(bbox.YMax)])
+            z_max = float(bbox.ZMax) if z_max is None else max(z_max, float(bbox.ZMax))
+            used.append(str(getattr(obj, "Label", getattr(obj, "Name", ""))))
+        except Exception:
+            continue
+    if not xs or not ys:
+        return None, None, []
+    return (min(xs), min(ys), max(xs), max(ys)), z_max, used
+
+
+def _make_face(points):
+    return Part.Face(Part.makePolygon(points + [points[0]]))
+
+
+def _make_gable_roof_shape(min_x, min_y, max_x, max_y, wall_height, overhang, ridge_rise, thickness):
+    x_left = min_x - overhang
+    x_right = max_x + overhang
+    y_front = min_y - overhang
+    y_back = max_y + overhang
+    x_mid = (min_x + max_x) / 2.0
+    z_eave = wall_height
+    z_ridge = wall_height + ridge_rise
+
+    a_top = FreeCAD.Vector(x_left, y_front, z_eave)
+    b_top = FreeCAD.Vector(x_right, y_front, z_eave)
+    c_top = FreeCAD.Vector(x_mid, y_front, z_ridge)
+    d_top = FreeCAD.Vector(x_left, y_back, z_eave)
+    e_top = FreeCAD.Vector(x_right, y_back, z_eave)
+    f_top = FreeCAD.Vector(x_mid, y_back, z_ridge)
+
+    a_bot = FreeCAD.Vector(x_left, y_front, z_eave - thickness)
+    b_bot = FreeCAD.Vector(x_right, y_front, z_eave - thickness)
+    c_bot = FreeCAD.Vector(x_mid, y_front, z_ridge - thickness)
+    d_bot = FreeCAD.Vector(x_left, y_back, z_eave - thickness)
+    e_bot = FreeCAD.Vector(x_right, y_back, z_eave - thickness)
+    f_bot = FreeCAD.Vector(x_mid, y_back, z_ridge - thickness)
+
+    faces = [
+        _make_face([a_top, c_top, f_top, d_top]),  # agua izquierda
+        _make_face([c_top, b_top, e_top, f_top]),  # agua derecha
+        _make_face([a_bot, d_bot, f_bot, c_bot]),  # intrados izquierdo
+        _make_face([c_bot, f_bot, e_bot, b_bot]),  # intrados derecho
+        _make_face([a_bot, a_top, d_top, d_bot]),  # fascia lateral izquierda
+        _make_face([b_bot, e_bot, e_top, b_top]),  # fascia lateral derecha
+        _make_face([a_top, c_top, b_top, b_bot, c_bot, a_bot]),  # testero frontal
+        _make_face([d_top, d_bot, f_bot, e_bot, e_top, f_top]),  # testero posterior
+    ]
+    try:
+        shell = Part.Shell(faces)
+        solid = Part.Solid(shell)
+        try:
+            solid = solid.removeSplitter()
+        except Exception:
+            pass
+        if not getattr(solid, "isNull", lambda: False)():
+            return solid
+    except Exception as exc:
+        _warn("No se pudo cerrar el techo como solido; usando Compound de caras: %s" % exc)
+    return Part.makeCompound(faces)
+
+
+def _tag_object(obj, root, role):
+    root_name = str(getattr(root, "Name", ""))
+    example_type = str(getattr(root, "GEE_ExampleType", ""))
+    variant = str(getattr(root, "GEE_ExampleVariant", ""))
+    seed = int(getattr(root, "GEE_Seed", 0) or 0)
+    _set_prop(obj, "App::PropertyBool", "GEE_QuickExampleObject", "GameEngineExport", "Objeto de ejemplo rapido", True)
+    _set_prop(obj, "App::PropertyString", "GEE_QuickExampleRoot", "GameEngineExport", "Raiz del ejemplo rapido", root_name)
+    _set_prop(obj, "App::PropertyString", "GEE_Role", "GameEngineExport", "Rol GameEngineExport", role)
+    _set_prop(obj, "App::PropertyString", "Role", "GameEngineExport", "Rol semantico", role)
+    _set_prop(obj, "App::PropertyString", "GEE_ExampleType", "GameEngineExport", "Tipo de ejemplo", example_type)
+    _set_prop(obj, "App::PropertyString", "GEE_ExampleVariant", "GameEngineExport", "Variante del ejemplo", variant)
+    _set_prop(obj, "App::PropertyInteger", "GEE_Seed", "GameEngineExport", "Semilla", seed)
+
+
+def _make_roof(doc, group, root, payload):
+    dimensions = dict(payload.get("dimensions", {}) or {})
+    wall_height = _float_from(dimensions, "wall_height_mm", DEFAULT_WALL_HEIGHT_MM)
+    payload_footprint = _footprint_from_payload(payload) if payload else None
+    sketch_footprint = _footprint_from_root(root)
+    exterior_sketch = _find_exterior_wall_sketch(root)
+    shape_footprint, shape_top_z, shape_labels = _building_bbox_from_root(root)
+
+    footprint = _combine_footprints([payload_footprint, sketch_footprint, shape_footprint])
+    if shape_footprint is not None:
+        _msg("Huella real incluida desde geometria del edificio: %d objeto(s)." % len(shape_labels))
+    elif sketch_footprint is not None and (not payload or payload_footprint == (0.0, 0.0, DEFAULT_WIDTH_MM, DEFAULT_DEPTH_MM)):
+        _warn("Huella tomada desde sketch exterior porque el JSON no estaba disponible/completo.")
+    if shape_top_z is not None and shape_top_z > 500.0:
+        wall_height = max(wall_height, shape_top_z)
+    min_x, min_y, max_x, max_y = footprint or (0.0, 0.0, DEFAULT_WIDTH_MM, DEFAULT_DEPTH_MM)
+    overhang = DEFAULT_OVERHANG_MM
+    ridge_rise = DEFAULT_RIDGE_RISE_MM
+    thickness = DEFAULT_THICKNESS_MM
+
+    shape = _make_gable_roof_shape(min_x, min_y, max_x, max_y, wall_height, overhang, ridge_rise, thickness)
+    roof = doc.addObject("Part::Feature", _safe_name("GEE_Roof_Gable"))
+    roof.Label = "GEE Roof Gable"
+    roof.Shape = shape
+    group.addObject(roof)
+
+    _tag_object(roof, root, "roof")
+    _set_prop(roof, "App::PropertyString", "IfcType", "GameEngineExport", "Tipo IFC sugerido", "Roof")
+    _set_prop(roof, "App::PropertyString", "GEE_RoofType", "GameEngineExport", "Tipo de techo", "gable")
+    _set_prop(roof, "App::PropertyFloat", "GEE_RoofOverhangMm", "GameEngineExport", "Alero en mm", overhang)
+    _set_prop(roof, "App::PropertyFloat", "GEE_RoofRidgeRiseMm", "GameEngineExport", "Altura cumbrera sobre muro en mm", ridge_rise)
+    _set_prop(roof, "App::PropertyFloat", "GEE_RoofThicknessMm", "GameEngineExport", "Espesor en mm", thickness)
+    _set_prop(roof, "App::PropertyBool", "GEE_BIMFallback", "GameEngineExport", "Geometria Part robusta", True)
+    if exterior_sketch is not None:
+        _set_prop(roof, "App::PropertyLink", "SourceSketch", "GameEngineExport", "Sketch exterior fuente", exterior_sketch)
+        _msg("Techo basado en sketch exterior: %s" % str(getattr(exterior_sketch, "Label", exterior_sketch.Name)))
+    _set_view(roof, color=DEFAULT_COLOR, transparency=0)
+
+    _msg(
+        "Techo creado: huella %.1f x %.1f mm | alero %.1f | cumbrera +%.1f | espesor %.1f"
+        % ((max_x - min_x), (max_y - min_y), overhang, ridge_rise, thickness)
+    )
+    return roof
+
+
+def _run():
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        raise RuntimeError("No hay documento activo.")
+    root = _find_latest_root(doc)
+    if root is None:
+        raise RuntimeError("No encontre un grupo GEE_QuickExample_. Genere o importe primero un Quick Example.")
+
+    _msg("--- AgregarTechoBIM_QuickExample ---")
+    _msg("Raiz: %s" % getattr(root, "Label", root.Name))
+
+    doc.openTransaction("Agregar techo BIM Quick Example")
+    try:
+        payload = _read_context_payload(root)
+        if not payload:
+            _warn("No se encontro contexto JSON; usando dimensiones por defecto.")
+        group = _prepare_output_group(doc, root)
+        roof = _make_roof(doc, group, root, payload)
+        doc.recompute()
+        doc.commitTransaction()
+    except Exception:
+        try:
+            doc.abortTransaction()
+        except Exception:
+            pass
+        raise
+
+    if FreeCADGui is not None:
+        try:
+            FreeCADGui.Selection.clearSelection()
+            FreeCADGui.Selection.addSelection(roof)
+            FreeCADGui.ActiveDocument.ActiveView.fitAll()
+        except Exception:
+            pass
+    _msg("Listo. Techo agregado en el grupo '%s'." % OUTPUT_GROUP_NAME)
+    return roof
+
+
+try:
+    result = _run()
+except Exception as exc:
+    _err("Error: %s" % exc)
+    raise

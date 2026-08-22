@@ -1,0 +1,67 @@
+{
+  "macro": "GameEngineExportWB Quick Example",
+  "building_type": "Casa",
+  "building_variant": "json_sample_house",
+  "seed": 101,
+  "units": "mm",
+  "dimensions": {
+    "width_mm": 12000,
+    "depth_mm": 9000,
+    "ext_wall_mm": 200,
+    "int_wall_mm": 100,
+    "wall_height_mm": 3000,
+    "door_height_mm": 2100,
+    "window_sill_mm": 900,
+    "window_height_mm": 1200
+  },
+  "terrain": {
+    "enabled": true,
+    "flatten_pad": true,
+    "pad_margin_mm": 1800,
+    "terrain_margin_mm": 9000,
+    "terrain_variation_mm": 650,
+    "floor_overhang_mm": 350
+  },
+  "segments": {
+    "exterior_walls": [
+      [0, 0, 12000, 0],
+      [12000, 0, 12000, 9000],
+      [0, 9000, 12000, 9000],
+      [0, 0, 0, 9000]
+    ],
+    "interior_walls": [
+      [4200, 0, 4200, 6000],
+      [7800, 0, 7800, 6000],
+      [0, 3300, 12000, 3300],
+      [0, 6000, 12000, 6000],
+      [7200, 6000, 7200, 9000]
+    ],
+    "door_openings": [
+      [1800, 0, 3000, 0],
+      [4200, 1100, 4200, 2400],
+      [7800, 1100, 7800, 2400],
+      [1900, 3300, 3100, 3300],
+      [5400, 3300, 6600, 3300],
+      [8600, 3300, 9800, 3300],
+      [2200, 6000, 3300, 6000],
+      [5600, 6000, 6700, 6000],
+      [8900, 6000, 10000, 6000],
+      [7200, 6500, 7200, 7600]
+    ],
+    "window_openings": [
+      [6000, 0, 7600, 0],
+      [0, 1300, 0, 2800],
+      [12000, 1500, 12000, 3000],
+      [2100, 9000, 3700, 9000],
+      [8200, 9000, 9800, 9000]
+    ]
+  },
+  "rooms": [
+    {"name": "Sala", "kind": "social", "x_mm": 0, "y_mm": 0, "w_mm": 4200, "d_mm": 3300, "area_m2": 13.86},
+    {"name": "Comedor", "kind": "social", "x_mm": 4200, "y_mm": 0, "w_mm": 3600, "d_mm": 3300, "area_m2": 11.88},
+    {"name": "Cocina", "kind": "servicio", "x_mm": 0, "y_mm": 3300, "w_mm": 4200, "d_mm": 2700, "area_m2": 11.34},
+    {"name": "Pasillo", "kind": "circulacion", "x_mm": 7800, "y_mm": 3300, "w_mm": 4200, "d_mm": 2700, "area_m2": 11.34},
+    {"name": "Dormitorio principal", "kind": "privado", "x_mm": 0, "y_mm": 6000, "w_mm": 7200, "d_mm": 3000, "area_m2": 21.6},
+    {"name": "Dormitorio secundario", "kind": "privado", "x_mm": 7200, "y_mm": 6000, "w_mm": 4800, "d_mm": 3000, "area_m2": 14.4}
+  ]
+}

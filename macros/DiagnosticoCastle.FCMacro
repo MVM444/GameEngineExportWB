@@ -1,0 +1,20 @@
+"""Acceso de macro al diagnostico Castle de GameEngineExportWB."""
+
+import importlib
+
+import FreeCAD
+
+
+try:
+    module = importlib.import_module(
+        "GameEngineExportWB.commands.cmd_castle_diagnostics"
+    )
+    module = importlib.reload(module)
+    module.CommandClass().Activated()
+except Exception as exc:
+    FreeCAD.Console.PrintError(
+        "[GAMEEXPORT] No se pudo ejecutar Diagnostico Castle: "
+        + str(exc)
+        + "\n"
+    )
+    raise

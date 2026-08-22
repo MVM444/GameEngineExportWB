@@ -1,0 +1,438 @@
+"""Agregar puertas y ventanas BIM al Quick Example de GameEngineExportWB.
+
+Uso:
+1. Genere una casa/oficina con "Ejemplo rapido / Quick Example".
+2. Ejecute esta macro.
+
+La macro busca los sketches GEE_SK_DoorOpenings y GEE_SK_WindowOpenings,
+crea objetos Arch Window/door cuando FreeCAD/BIM lo permite, y agrega una
+hoja de puerta abierta a 90 grados para que sea visible en exportaciones.
+"""
+
+from __future__ import annotations
+
+import math
+
+import FreeCAD
+import Part
+
+try:
+    import FreeCADGui
+except Exception:
+    FreeCADGui = None
+
+try:
+    import Arch
+except Exception:
+    Arch = None
+
+
+LOG_PREFIX = "[GEE-BIM-DW] "
+ROOT_PREFIX = "GEE_QuickExample_"
+OUTPUT_GROUP_NAME = "GEE_BIM_DoorsWindows"
+
+DEFAULT_DOOR_HEIGHT = 2100.0
+DEFAULT_DOOR_LEAF_THICKNESS = 45.0
+DEFAULT_WINDOW_SILL = 900.0
+DEFAULT_WINDOW_HEIGHT = 1200.0
+DEFAULT_FRAME_DEPTH = 80.0
+DEFAULT_GLASS_THICKNESS = 30.0
+
+
+def _msg(text):
+    FreeCAD.Console.PrintMessage(LOG_PREFIX + str(text) + "\n")
+
+
+def _warn(text):
+    FreeCAD.Console.PrintWarning(LOG_PREFIX + str(text) + "\n")
+
+
+def _safe_name(text):
+    value = str(text).strip()
+    for old, new in {
+        " ": "_",
+        "-": "_",
+        "/": "_",
+        "\\": "_",
+        ".": "_",
+        "(": "",
+        ")": "",
+    }.items():
+        value = value.replace(old, new)
+    return "".join(ch for ch in value if ch.isalnum() or ch == "_") or "Object"
+
+
+def _set_prop(obj, prop_type, name, group, desc, value):
+    try:
+        if not hasattr(obj, name):
+            obj.addProperty(prop_type, name, group, desc)
+        setattr(obj, name, value)
+    except Exception:
+        pass
+
+
+def _set_view(obj, color=None, transparency=None):
+    try:
+        if color is not None:
+            obj.ViewObject.ShapeColor = color
+            obj.ViewObject.LineColor = color
+        if transparency is not None:
+            obj.ViewObject.Transparency = int(transparency)
+    except Exception:
+        pass
+
+
+def _walk(obj):
+    pending = [obj]
+    seen = set()
+    while pending:
+        current = pending.pop()
+        name = str(getattr(current, "Name", ""))
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        yield current
+        pending.extend(list(getattr(current, "Group", []) or []))
+        pending.extend(list(getattr(current, "OutList", []) or []))
+
+
+def _is_quick_root(obj):
+    name = str(getattr(obj, "Name", ""))
+    label = str(getattr(obj, "Label", ""))
+    props = set(getattr(obj, "PropertiesList", []) or [])
+    return name.startswith(ROOT_PREFIX) or label.startswith(ROOT_PREFIX) or "GEE_ContextJSON" in props
+
+
+def _find_latest_root(doc):
+    if FreeCADGui is not None:
+        try:
+            for obj in FreeCADGui.Selection.getSelection():
+                if _is_quick_root(obj):
+                    return obj
+                for parent in list(getattr(obj, "InList", []) or []):
+                    if _is_quick_root(parent):
+                        return parent
+        except Exception:
+            pass
+
+    roots = [obj for obj in doc.Objects if _is_quick_root(obj)]
+    if not roots:
+        return None
+
+    def sort_key(obj):
+        text = str(getattr(obj, "Name", "")) + "_" + str(getattr(obj, "Label", ""))
+        digits = "".join(ch for ch in text if ch.isdigit())
+        return int(digits[-12:] or 0)
+
+    return sorted(roots, key=sort_key)[-1]
+
+
+def _remove_object_tree(doc, obj):
+    names = [child.Name for child in _walk(obj) if getattr(child, "Name", None)]
+    for name in reversed(names):
+        try:
+            if doc.getObject(name) is not None:
+                doc.removeObject(name)
+        except Exception:
+            pass
+
+
+def _prepare_output_group(doc, root):
+    for child in list(getattr(root, "Group", []) or []):
+        if str(getattr(child, "Name", "")) == OUTPUT_GROUP_NAME or str(getattr(child, "Label", "")) == OUTPUT_GROUP_NAME:
+            _remove_object_tree(doc, child)
+    group = doc.addObject("App::DocumentObjectGroup", OUTPUT_GROUP_NAME)
+    group.Label = OUTPUT_GROUP_NAME
+    root.addObject(group)
+    _set_prop(group, "App::PropertyBool", "GEE_QuickExampleObject", "GameEngineExport", "Objeto de ejemplo rapido", True)
+    _set_prop(group, "App::PropertyString", "GEE_Role", "GameEngineExport", "Rol GameEngineExport", "bim_doors_windows_group")
+    return group
+
+
+def _role(obj):
+    return str(getattr(obj, "GEE_Role", getattr(obj, "Role", "")))
+
+
+def _find_sketch(root, expected_role, name_part):
+    for obj in _walk(root):
+        type_id = str(getattr(obj, "TypeId", ""))
+        name = str(getattr(obj, "Name", ""))
+        label = str(getattr(obj, "Label", ""))
+        if "Sketch" not in type_id:
+            continue
+        if _role(obj) == expected_role:
+            return obj
+        if name_part in name or name_part in label:
+            return obj
+    return None
+
+
+def _iter_segments(sketch):
+    placement = getattr(sketch, "Placement", FreeCAD.Placement())
+    for index, geo in enumerate(list(getattr(sketch, "Geometry", []) or [])):
+        try:
+            if hasattr(sketch, "getConstruction") and sketch.getConstruction(index):
+                continue
+        except Exception:
+            pass
+        if not hasattr(geo, "StartPoint") or not hasattr(geo, "EndPoint"):
+            continue
+        p1 = placement.multVec(geo.StartPoint)
+        p2 = placement.multVec(geo.EndPoint)
+        if p1.distanceToPoint(p2) > 50.0:
+            yield index, p1, p2
+
+
+def _segment_info(p1, p2):
+    dx = p2.x - p1.x
+    dy = p2.y - p1.y
+    length = math.sqrt(dx * dx + dy * dy)
+    if length <= 0.0:
+        return None
+    tx = dx / length
+    ty = dy / length
+    nx = -ty
+    ny = tx
+    horizontal = abs(dx) >= abs(dy)
+    return {
+        "length": length,
+        "tx": tx,
+        "ty": ty,
+        "nx": nx,
+        "ny": ny,
+        "horizontal": horizontal,
+    }
+
+
+def _make_profile_face(p1, p2, z0, height):
+    a = FreeCAD.Vector(p1.x, p1.y, z0)
+    b = FreeCAD.Vector(p2.x, p2.y, z0)
+    c = FreeCAD.Vector(p2.x, p2.y, z0 + height)
+    d = FreeCAD.Vector(p1.x, p1.y, z0 + height)
+    return Part.Face(Part.makePolygon([a, b, c, d, a]))
+
+
+def _make_base_profile(doc, group, name, p1, p2, z0, height, color):
+    obj = doc.addObject("Part::Feature", _safe_name(name))
+    obj.Label = name
+    obj.Shape = _make_profile_face(p1, p2, z0, height)
+    group.addObject(obj)
+    _set_prop(obj, "App::PropertyString", "GEE_Role", "GameEngineExport", "Rol GameEngineExport", "bim_opening_profile")
+    _set_view(obj, color=color, transparency=85)
+    return obj
+
+
+def _make_arch_opening(doc, group, name, base, kind, height, sill, open_percent):
+    obj = None
+    if Arch is not None and hasattr(Arch, "makeWindow"):
+        try:
+            obj = Arch.makeWindow(base, name=_safe_name(name))
+        except TypeError:
+            try:
+                obj = Arch.makeWindow(base)
+            except Exception:
+                obj = None
+        except Exception:
+            obj = None
+
+    if obj is None:
+        obj = doc.addObject("Part::Feature", _safe_name(name + "_Fallback"))
+        obj.Label = name
+        obj.Shape = base.Shape
+        _set_prop(obj, "App::PropertyBool", "GEE_BIMFallback", "GameEngineExport", "Arch.makeWindow no disponible", True)
+    else:
+        obj.Label = name
+
+    group.addObject(obj)
+    _set_prop(obj, "App::PropertyString", "GEE_Role", "GameEngineExport", "Rol GameEngineExport", kind)
+    _set_prop(obj, "App::PropertyString", "GEE_BIMType", "GameEngineExport", "Tipo BIM", kind)
+    _set_prop(obj, "App::PropertyLink", "GEE_BaseProfile", "GameEngineExport", "Perfil base", base)
+    _set_prop(obj, "App::PropertyFloat", "Height_mm", "GameEngineExport", "Altura", float(height))
+    _set_prop(obj, "App::PropertyFloat", "Sill_mm", "GameEngineExport", "Antepecho", float(sill))
+    _set_prop(obj, "App::PropertyFloat", "GEE_OpeningPercent", "GameEngineExport", "Apertura porcentual", float(open_percent))
+    for attr in ("Opening", "Open", "OpeningPercent"):
+        if hasattr(obj, attr):
+            try:
+                setattr(obj, attr, float(open_percent))
+            except Exception:
+                pass
+    return obj
+
+
+def _make_box(doc, group, name, shape, role, color, transparency=0):
+    obj = doc.addObject("Part::Feature", _safe_name(name))
+    obj.Label = name
+    obj.Shape = shape
+    group.addObject(obj)
+    _set_prop(obj, "App::PropertyString", "GEE_Role", "GameEngineExport", "Rol GameEngineExport", role)
+    _set_view(obj, color=color, transparency=transparency)
+    return obj
+
+
+def _make_window_glass(doc, group, name, p1, p2, sill, height):
+    info = _segment_info(p1, p2)
+    if info is None:
+        return None
+    length = max(info["length"] - 160.0, 200.0)
+    depth = DEFAULT_GLASS_THICKNESS
+    z = sill + 80.0
+    glass_height = max(height - 160.0, 200.0)
+    min_x = min(p1.x, p2.x)
+    min_y = min(p1.y, p2.y)
+    if info["horizontal"]:
+        x0 = min_x + 80.0
+        y0 = p1.y - depth / 2.0
+        shape = Part.makeBox(length, depth, glass_height, FreeCAD.Vector(x0, y0, z))
+    else:
+        x0 = p1.x - depth / 2.0
+        y0 = min_y + 80.0
+        shape = Part.makeBox(depth, length, glass_height, FreeCAD.Vector(x0, y0, z))
+    return _make_box(doc, group, name, shape, "window_glass_visual", (0.35, 0.75, 0.95), transparency=55)
+
+
+def _door_open_direction(info, p1):
+    # Exterior front doors open inward; most interior doors alternate deterministically.
+    if info["horizontal"]:
+        return 1.0 if p1.y < 100.0 else (-1.0 if int(p1.x / 1000.0) % 2 else 1.0)
+    return 1.0 if int(p1.y / 1000.0) % 2 else -1.0
+
+
+def _make_open_door_leaf(doc, group, name, p1, p2, height):
+    info = _segment_info(p1, p2)
+    if info is None:
+        return None
+    leaf_width = max(min(info["length"] - 80.0, 1200.0), 650.0)
+    thickness = DEFAULT_DOOR_LEAF_THICKNESS
+    open_dir = _door_open_direction(info, p1)
+    hinge = p1
+
+    if info["horizontal"]:
+        x0 = hinge.x - thickness / 2.0
+        y0 = hinge.y if open_dir > 0 else hinge.y - leaf_width
+        shape = Part.makeBox(thickness, leaf_width, height, FreeCAD.Vector(x0, y0, 0.0))
+    else:
+        x0 = hinge.x if open_dir > 0 else hinge.x - leaf_width
+        y0 = hinge.y - thickness / 2.0
+        shape = Part.makeBox(leaf_width, thickness, height, FreeCAD.Vector(x0, y0, 0.0))
+
+    leaf = _make_box(doc, group, name, shape, "door_leaf_open_90_visual", (0.55, 0.28, 0.10), transparency=0)
+    _set_prop(leaf, "App::PropertyFloat", "GEE_OpeningAngle_deg", "GameEngineExport", "Angulo de apertura", 90.0)
+    _set_prop(leaf, "App::PropertyFloat", "GEE_OpeningPercent", "GameEngineExport", "Apertura porcentual", 100.0)
+    return leaf
+
+
+def _tag(obj, root):
+    _set_prop(obj, "App::PropertyBool", "GEE_QuickExampleObject", "GameEngineExport", "Objeto de ejemplo rapido", True)
+    _set_prop(obj, "App::PropertyString", "GEE_QuickExampleRoot", "GameEngineExport", "Raiz del ejemplo rapido", str(root.Name))
+
+
+def _run():
+    doc = FreeCAD.ActiveDocument
+    if doc is None:
+        raise RuntimeError("No hay documento activo.")
+
+    root = _find_latest_root(doc)
+    if root is None:
+        raise RuntimeError("No encontre un grupo GEE_QuickExample_. Genere primero un Quick Example.")
+
+    door_sketch = _find_sketch(root, "door_opening_axis", "DoorOpenings")
+    window_sketch = _find_sketch(root, "window_opening_axis", "WindowOpenings")
+    if door_sketch is None and window_sketch is None:
+        raise RuntimeError("No encontre sketches GEE_SK_DoorOpenings/GEE_SK_WindowOpenings en el ejemplo.")
+
+    group = _prepare_output_group(doc, root)
+
+    created_doors = 0
+    created_windows = 0
+    if door_sketch is not None:
+        for index, p1, p2 in _iter_segments(door_sketch):
+            base = _make_base_profile(
+                doc,
+                group,
+                "GEE_Door_Profile_%02d" % (index + 1),
+                p1,
+                p2,
+                0.0,
+                DEFAULT_DOOR_HEIGHT,
+                (0.85, 0.35, 0.10),
+            )
+            door = _make_arch_opening(
+                doc,
+                group,
+                "GEE_BIM_Door_Open100_%02d" % (index + 1),
+                base,
+                "bim_door_open_100",
+                DEFAULT_DOOR_HEIGHT,
+                0.0,
+                100.0,
+            )
+            leaf = _make_open_door_leaf(
+                doc,
+                group,
+                "GEE_Door_Leaf_Open90_%02d" % (index + 1),
+                p1,
+                p2,
+                DEFAULT_DOOR_HEIGHT - 50.0,
+            )
+            for obj in (base, door, leaf):
+                if obj is not None:
+                    _tag(obj, root)
+            created_doors += 1
+
+    if window_sketch is not None:
+        for index, p1, p2 in _iter_segments(window_sketch):
+            base = _make_base_profile(
+                doc,
+                group,
+                "GEE_Window_Profile_%02d" % (index + 1),
+                p1,
+                p2,
+                DEFAULT_WINDOW_SILL,
+                DEFAULT_WINDOW_HEIGHT,
+                (0.12, 0.62, 0.88),
+            )
+            window = _make_arch_opening(
+                doc,
+                group,
+                "GEE_BIM_Window_%02d" % (index + 1),
+                base,
+                "bim_window",
+                DEFAULT_WINDOW_HEIGHT,
+                DEFAULT_WINDOW_SILL,
+                0.0,
+            )
+            glass = _make_window_glass(
+                doc,
+                group,
+                "GEE_Window_Glass_%02d" % (index + 1),
+                p1,
+                p2,
+                DEFAULT_WINDOW_SILL,
+                DEFAULT_WINDOW_HEIGHT,
+            )
+            for obj in (base, window, glass):
+                if obj is not None:
+                    _tag(obj, root)
+            created_windows += 1
+
+    _tag(group, root)
+    doc.recompute()
+    _msg(
+        "Listo. Puertas BIM/visuales: %d | Ventanas BIM/visuales: %d | Grupo: %s"
+        % (created_doors, created_windows, group.Label)
+    )
+    return group
+
+
+try:
+    result = _run()
+    if FreeCADGui is not None and result is not None:
+        try:
+            FreeCADGui.Selection.clearSelection()
+            FreeCADGui.Selection.addSelection(result)
+            FreeCADGui.SendMsgToActiveView("ViewFit")
+        except Exception:
+            pass
+except Exception as exc:
+    FreeCAD.Console.PrintError(LOG_PREFIX + "Error: " + str(exc) + "\n")
+    raise
