@@ -14,9 +14,9 @@ FreeCAD -> GameEngineExportWB -> X3D -> Castle Model Viewer
 
 ## Estado actual / Current status
 
-Version de desarrollo `0.2.0` (2026-08-19), preparada como version de presentacion en depuracion. Ya existen exportacion X3D, lanzamiento de Castle, Quick Examples, GameStart, luces, perfiles visuales, analisis X3D, diagnostico Castle y ayuda integrada.
+Version publica actual `0.2.1` (2026-08-22), disponible para instalacion desde el repositorio publico como Addon personalizado de FreeCAD. Ya existen exportacion X3D, lanzamiento de Castle, Quick Examples, GameStart, luces, perfiles visuales, analisis X3D, diagnostico Castle y ayuda integrada.
 
-Development version `0.2.0` (2026-08-19), being refined as a presentation-ready build. X3D export, Castle launch, Quick Examples, GameStart, lights, visual profiles, X3D analysis, Castle diagnostics and integrated help are already available.
+Current public version `0.2.1` (2026-08-22), available from the public repository as a custom FreeCAD Addon. X3D export, Castle launch, Quick Examples, GameStart, lights, visual profiles, X3D analysis, Castle diagnostics and integrated help are already available.
 
 La asignacion general de materiales/texturas por objeto ya esta implementada en fase experimental. Espejo, reflexiones y diagnostico visual inteligente requieren validacion adicional en Castle y modelos reales.
 
@@ -32,9 +32,23 @@ El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB
 
 The dedicated public repository is `https://github.com/MVM444/GameEngineExportWB`, with `main` as its default branch. The repository root directly contains the Workbench files.
 
-1. Abra **Tools > Addon Manager** en FreeCAD 1.1.3.
-2. Agregue `https://github.com/MVM444/GameEngineExportWB` con la rama `main` en **Custom Repositories**.
-3. Instale **GameEngineExportWB**, reinicie FreeCAD y seleccione **Game Engine Export WB**.
+### Espanol
+
+1. Abra **Edit > Preferences > Addon Manager > Addon Manager Options** en FreeCAD 1.1.3.
+2. En **Custom Repositories**, agregue `https://github.com/MVM444/GameEngineExportWB` y establezca la rama exactamente como `main`.
+3. Aplique los cambios y cierre Preferencias.
+4. Abra **Tools > Addon Manager**.
+5. Busque e instale **GameEngineExportWB**.
+6. Reinicie FreeCAD y seleccione **Game Engine Export WB** desde el selector de Workbenches.
+
+### English
+
+1. Open **Edit > Preferences > Addon Manager > Addon Manager Options** in FreeCAD 1.1.3.
+2. Under **Custom Repositories**, add `https://github.com/MVM444/GameEngineExportWB` and set the branch exactly to `main`.
+3. Apply the changes and close Preferences.
+4. Open **Tools > Addon Manager**.
+5. Find and install **GameEngineExportWB**.
+6. Restart FreeCAD and select **Game Engine Export WB** from the Workbench selector.
 
 Addon Manager administra la instalacion y las actualizaciones desde ese repositorio; no es necesario copiar manualmente recursos a `Mod`. Castle Model Viewer es una dependencia externa opcional: su ausencia no impide cargar el Workbench.
 
