@@ -4,7 +4,7 @@ import importlib.util
 from pathlib import Path
 import unittest
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "gamestart.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "core" / "gamestart.py"
 SPEC = importlib.util.spec_from_file_location("gee_gamestart_test", MODULE_PATH)
 gamestart = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(gamestart)

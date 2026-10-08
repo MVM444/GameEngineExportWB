@@ -7,7 +7,7 @@ import types
 import unittest
 from unittest import mock
 
-from GameEngineExportWB.core import lights
+from freecad.GameEngineExportWB.core import lights
 
 
 class _Vector:

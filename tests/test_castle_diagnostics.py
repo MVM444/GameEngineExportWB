@@ -4,8 +4,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from GameEngineExportWB.core import castle_diagnostics
-from GameEngineExportWB.ui.output_defaults import (
+from freecad.GameEngineExportWB.core import castle_diagnostics
+from freecad.GameEngineExportWB.ui.output_defaults import (
     compute_output_defaults,
     temporary_output_directory,
 )

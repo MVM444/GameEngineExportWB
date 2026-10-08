@@ -9,7 +9,7 @@ Date and time: 2026-08-19 17:35 -06:00
 import xml.etree.ElementTree as ET
 import unittest
 
-from GameEngineExportWB.core import exporter_x3d as ex
+from freecad.GameEngineExportWB.core import exporter_x3d as ex
 
 
 class ExporterMaterialEffectsTests(unittest.TestCase):

@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 from unittest import mock
 
-from GameEngineExportWB.core import web_preview
+from freecad.GameEngineExportWB.core import web_preview
 
 
 SAMPLE_X3D = """<?xml version="1.0" encoding="utf-8"?>

@@ -11,6 +11,7 @@ import hashlib
 import importlib
 import json
 import os
+import sys
 from pathlib import Path
 import time
 import traceback
@@ -113,14 +114,14 @@ def close_freecad():
 
 
 def help_and_language_checks(result):
-    from GameEngineExportWB import i18n
-    from GameEngineExportWB.commands import cmd_help, cmd_reload_workbench
-    from GameEngineExportWB.ui import panel_info
+    from freecad.GameEngineExportWB import i18n
+    from freecad.GameEngineExportWB.commands import cmd_help, cmd_reload_workbench
+    from freecad.GameEngineExportWB.ui import panel_info
 
     general = FreeCAD.ParamGet("User parameter:BaseApp/Preferences/General")
     original_language = general.GetString("Language", "")
 
-    qm_path = Path(i18n.__file__).resolve().parent / "translations" / "GameEngineExportWB_es-ES.qm"
+    qm_path = Path(i18n.__file__).resolve().parent / "resources" / "translations" / "GameEngineExportWB_es-ES.qm"
     translator = QtCore.QTranslator()
     require(qm_path.is_file(), "Compiled Spanish QM is missing")
     require(translator.load(str(qm_path)), "Compiled Spanish QM cannot be loaded by Qt")
@@ -145,11 +146,11 @@ def help_and_language_checks(result):
     QtCore.QTimer.singleShot(50, reject_visible_dialogs)
     cmd_help.CommandClass().Activated()
     require(cmd_reload_workbench.reload_workbench_runtime(), "Hot restart returned false")
-    live_help = importlib.import_module("GameEngineExportWB.commands.cmd_help")
+    live_help = importlib.import_module("freecad.GameEngineExportWB.commands.cmd_help")
     QtCore.QTimer.singleShot(50, reject_visible_dialogs)
     live_help.CommandClass().Activated()
 
-    live_info = importlib.import_module("GameEngineExportWB.ui.panel_info")
+    live_info = importlib.import_module("freecad.GameEngineExportWB.ui.panel_info")
     tip_params = FreeCAD.ParamGet(live_info.TIP_PARAM_GROUP)
     tip_params.SetBool("show_startup_tips", True)
     tip_dialog = live_info.build_startup_tips_dialog()
@@ -185,7 +186,7 @@ def help_and_language_checks(result):
         live_info.build_startup_tips_dialog = original_builder
     tip_params.SetBool("show_startup_tips", True)
 
-    from GameEngineExportWB.core import json_ai
+    from freecad.GameEngineExportWB.core import json_ai
 
     workbench_context = live_info.build_workbench_ai_package()
     prompt_only = json_ai.get_prompt_template("en")
@@ -210,7 +211,23 @@ def help_and_language_checks(result):
 
 
 def workbench_registration_checks(result):
+    # Check automatic startup discovery before importing any addon module here.
+    entry = sys.modules.get("freecad.GameEngineExportWB.init_gui")
+    require(entry is not None, "Modern init_gui was not automatically loaded at startup")
+    expected_root = os.environ.get("GEE_DEV_ROOT", "")
+    if expected_root:
+        expected_package = Path(expected_root).resolve() / "freecad" / "GameEngineExportWB"
+        require(Path(entry.__file__).resolve().parent == expected_package,
+                "Startup loaded a different addon source")
+    legacy = [name for name in sys.modules
+              if name == "GameEngineExportWB" or name.startswith("GameEngineExportWB.")
+              or name == "Mod.GameEngineExportWB" or name.startswith("Mod.GameEngineExportWB.")]
+    require(not legacy, f"Legacy modules loaded at startup: {legacy}")
+    result["modern_entrypoint"] = str(Path(entry.__file__).resolve())
+    result["legacy_modules"] = legacy
     workbenches = dict(FreeCADGui.listWorkbenches() or {})
+    require(len([name for name in workbenches if "gameengineexport" in name.lower()]) == 1,
+            "Multiple GameEngineExport workbench registrations")
     require(
         "GameEngineExportWorkbench" in workbenches,
         "GameEngineExportWorkbench is not registered",
@@ -221,18 +238,18 @@ def workbench_registration_checks(result):
     FreeCADGui.activateWorkbench("GameEngineExportWorkbench")
     process_events()
 
-    from GameEngineExportWB.commands import cmd_add_light_properties
-    from GameEngineExportWB.commands import cmd_analyze_x3d
-    from GameEngineExportWB.commands import cmd_bim_doors_windows
-    from GameEngineExportWB.commands import cmd_castle_diagnostics
-    from GameEngineExportWB.commands import cmd_export_and_launch
-    from GameEngineExportWB.commands import cmd_help
-    from GameEngineExportWB.commands import cmd_import_json_example
-    from GameEngineExportWB.commands import cmd_open_panel
-    from GameEngineExportWB.commands import cmd_quick_examples
-    from GameEngineExportWB.commands import cmd_reload_workbench
-    from GameEngineExportWB.commands import cmd_roof_quick_example
-    from GameEngineExportWB.ui import workbench as workbench_module
+    from freecad.GameEngineExportWB.commands import cmd_add_light_properties
+    from freecad.GameEngineExportWB.commands import cmd_analyze_x3d
+    from freecad.GameEngineExportWB.commands import cmd_bim_doors_windows
+    from freecad.GameEngineExportWB.commands import cmd_castle_diagnostics
+    from freecad.GameEngineExportWB.commands import cmd_export_and_launch
+    from freecad.GameEngineExportWB.commands import cmd_help
+    from freecad.GameEngineExportWB.commands import cmd_import_json_example
+    from freecad.GameEngineExportWB.commands import cmd_open_panel
+    from freecad.GameEngineExportWB.commands import cmd_quick_examples
+    from freecad.GameEngineExportWB.commands import cmd_reload_workbench
+    from freecad.GameEngineExportWB.commands import cmd_roof_quick_example
+    from freecad.GameEngineExportWB.ui import workbench as workbench_module
 
     expected = {
         cmd_quick_examples.CommandClass.CommandName,
@@ -292,10 +309,12 @@ def workbench_registration_checks(result):
     result["toolbar_commands"] = len(expected)
     result["reload_menu_only"] = True
     result["icons_loaded"] = len(icon_paths) + 1
+    ARTIFACTS.mkdir(parents=True, exist_ok=True)
+    FreeCADGui.getMainWindow().grab().save(str(ARTIFACTS / "modern-toolbars.png"))
 
 
 def generate_example(example_type, name, **overrides):
-    from GameEngineExportWB.core import quick_examples
+    from freecad.GameEngineExportWB.core import quick_examples
 
     doc = FreeCAD.newDocument(name)
     options = {
@@ -317,8 +336,8 @@ def generate_example(example_type, name, **overrides):
 
 
 def quick_example_and_json_checks(result):
-    from GameEngineExportWB.core import json_ai, json_importer
-    from GameEngineExportWB.ui import panel_export
+    from freecad.GameEngineExportWB.core import json_ai, json_importer
+    from freecad.GameEngineExportWB.ui import panel_export
 
     example_results = {}
     house_payload = None
@@ -411,11 +430,31 @@ def quick_example_and_json_checks(result):
     result["json_round_trip"] = True
     result["stale_ground_texture_blocked"] = True
 
+    # Exercise the actual dialog's Generate button in a disposable document.
+    from freecad.GameEngineExportWB.commands import cmd_import_json_example, cmd_open_panel
+    doc = FreeCAD.newDocument("GEE_Smoke_JSON_Dialog")
+    dialog = cmd_import_json_example.ImportJSONDialog()
+    dialog.text.setPlainText(json.dumps(modified))
+    dialog.show()
+    process_events()
+    dialog.btn_generate.click()
+    require(dialog.result() == QtGui.QDialog.Accepted, "JSON Generate dialog did not succeed")
+    require(doc.getObject("GameStart") is not None, "JSON dialog generated no scene")
+    dialog.deleteLater()
+    cmd_open_panel.CommandClass().Activated()
+    process_events()
+    require(FreeCADGui.Control.activeDialog(), "Export command did not open a TaskPanel")
+    FreeCADGui.getMainWindow().grab().save(str(ARTIFACTS / "export-task-panel.png"))
+    FreeCADGui.Control.closeDialog()
+    result["json_dialog_generate"] = True
+    result["export_task_panel_opened"] = True
+    close_document(doc)
+
 
 def one_click_quick_example_checks(result):
     """Exercise Quick Example -> conditional export -> Castle launch control flow."""
-    from GameEngineExportWB.commands import cmd_export_and_launch
-    from GameEngineExportWB.ui import panel_export
+    from freecad.GameEngineExportWB.commands import cmd_export_and_launch
+    from freecad.GameEngineExportWB.ui import panel_export
 
     require(CASTLE_PATH.is_file(), "Castle path is unavailable for one-click flow")
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
@@ -487,18 +526,50 @@ def one_click_quick_example_checks(result):
         "reexport_changed": True,
         "castle_launch_requests": len(launches),
     }
+    # Transparent process instrumentation: run the real launcher, then close
+    # only the viewer created by this test. The earlier cache checks intercept
+    # launch requests; this check must start a real Castle process.
+    import subprocess
+    original_popen = subprocess.Popen
+    real_processes = []
+
+    def record_real_process(*args, **kwargs):
+        child = original_popen(*args, **kwargs)
+        arguments = args[0] if args else kwargs.get("args", [])
+        if isinstance(arguments, (list, tuple)) and arguments and Path(arguments[0]) == CASTLE_PATH:
+            real_processes.append(child)
+        return child
+
+    subprocess.Popen = record_real_process
+    try:
+        cmd_export_and_launch.CommandClass().Activated()
+        require(len(real_processes) == 1, "One-click did not launch a real Castle process")
+        child = real_processes[0]
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and child.poll() is None:
+            process_events()
+            time.sleep(0.05)
+        require(child.poll() is None, "Interactive Castle exited immediately")
+        result["one_click_quick_example"]["real_castle_pid"] = child.pid
+        result["one_click_quick_example"]["real_castle_launch"] = True
+    finally:
+        subprocess.Popen = original_popen
+        for child in real_processes:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=10)
     close_document(doc)
     return x3d
 
 
 def material_export_and_diagnostic_checks(result, castle_x3d=None):
-    from GameEngineExportWB.commands import cmd_export_and_launch
-    from GameEngineExportWB.core import castle_diagnostics
-    from GameEngineExportWB.core import exporter_x3d
-    from GameEngineExportWB.core import gamestart
-    from GameEngineExportWB.core import material_assignments
-    from GameEngineExportWB.core import x3d_analyzer
-    from GameEngineExportWB.ui import panel_export
+    from freecad.GameEngineExportWB.commands import cmd_export_and_launch
+    from freecad.GameEngineExportWB.core import castle_diagnostics
+    from freecad.GameEngineExportWB.core import exporter_x3d
+    from freecad.GameEngineExportWB.core import gamestart
+    from freecad.GameEngineExportWB.core import material_assignments
+    from freecad.GameEngineExportWB.core import x3d_analyzer
+    from freecad.GameEngineExportWB.ui import panel_export
 
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     doc = FreeCAD.newDocument("GEE_Smoke_Materials")

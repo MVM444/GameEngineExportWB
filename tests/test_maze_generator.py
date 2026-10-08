@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "maze_generator.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "core" / "maze_generator.py"
 SPEC = importlib.util.spec_from_file_location("gee_maze_generator_test", MODULE_PATH)
 maze_generator = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(maze_generator)

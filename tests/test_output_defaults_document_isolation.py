@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "ui" / "output_defaults.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "ui" / "output_defaults.py"
 SPEC = importlib.util.spec_from_file_location("gee_output_defaults_test", MODULE_PATH)
 output_defaults = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(output_defaults)

@@ -14,9 +14,9 @@ FreeCAD -> GameEngineExportWB -> X3D -> Castle Model Viewer
 
 ## Estado actual / Current status
 
-Version publica actual `0.2.1` (2026-08-22), disponible para instalacion desde el repositorio publico como Addon personalizado de FreeCAD. Ya existen exportacion X3D, lanzamiento de Castle, Quick Examples, GameStart, luces, perfiles visuales, analisis X3D, diagnostico Castle y ayuda integrada.
+Version publica actual `0.2.1` (2026-08-22). La DEV prepara `0.3.0` con la estructura moderna namespaced `freecad/GameEngineExportWB`. Ya existen exportacion X3D, lanzamiento de Castle, Quick Examples, GameStart, luces, perfiles visuales, analisis X3D, diagnostico Castle y ayuda integrada.
 
-Current public version `0.2.1` (2026-08-22), available from the public repository as a custom FreeCAD Addon. X3D export, Castle launch, Quick Examples, GameStart, lights, visual profiles, X3D analysis, Castle diagnostics and integrated help are already available.
+Current public version `0.2.1` (2026-08-22). DEV is preparing `0.3.0` with the modern namespaced `freecad/GameEngineExportWB` layout. X3D export, Castle launch, Quick Examples, GameStart, lights, visual profiles, X3D analysis, Castle diagnostics and integrated help are already available.
 
 La asignacion general de materiales/texturas por objeto ya esta implementada en fase experimental. Espejo, reflexiones y diagnostico visual inteligente requieren validacion adicional en Castle y modelos reales.
 
@@ -28,9 +28,9 @@ The UI is being migrated to true Spanish/English localization using FreeCAD/Qt t
 
 ## Instalacion / Installation
 
-El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB` y su rama principal es `main`. La raiz del repositorio contiene directamente los archivos del Workbench.
+El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB` y su rama principal es `main` (version publicada 0.2.1 con estructura anterior). Solo la DEV en Drive usa actualmente la estructura moderna: `package.xml` permanece en la raiz y el codigo bajo `freecad/GameEngineExportWB/`. No actualizar GitHub hasta aprobar las pruebas de FreeCAD 1.1.3.
 
-The dedicated public repository is `https://github.com/MVM444/GameEngineExportWB`, with `main` as its default branch. The repository root directly contains the Workbench files.
+The public repository is `https://github.com/MVM444/GameEngineExportWB` (`main`, published 0.2.1 with legacy layout). Only Drive DEV currently has the modern layout: `package.xml` stays at root and Workbench code lives under `freecad/GameEngineExportWB/`. Do not update GitHub until FreeCAD 1.1.3 smoke tests are approved.
 
 ### Espanol
 
@@ -58,7 +58,7 @@ Addon Manager manages installation and updates from that repository; manually co
 
 1. Abre Visual Studio Code y elige **File > Open Folder**.
 2. Selecciona la carpeta raiz `GameEngineExportWB`.
-3. Cuando el editor termine de indexar, podras navegar por los subdirectorios `core`, `ui`, `commands` y `resources`.
+3. Cuando el editor termine de indexar, podras navegar por `freecad/GameEngineExportWB/` y sus subdirectorios `core`, `ui`, `commands`, `adapters` y `resources`.
 4. Si deseas conservar notas de las sesiones, utiliza el archivo `notes/GameEngineExportWB_chat.md` descrito mas adelante.
 
 ## Aplicar cambios en Visual Studio Code
@@ -156,7 +156,7 @@ El Workbench separa los comandos en tres barras para que los iconos indiquen el 
 
 ### Contexto para inteligencia artificial
 
-`AI_CONTEXT.md` se distribuye en la raiz del Workbench como contexto tecnico estable para GPT, Codex u otros asistentes. Explica que hace el Workbench, su arquitectura, comandos, flujo X3D/Castle, materiales, GameStart, JSON/IA, diagnostico, pruebas minimas, privacidad y reglas para modificarlo sin romper comportamiento existente.
+`freecad/GameEngineExportWB/AI_CONTEXT.md` se distribuye en el paquete del Workbench como contexto tecnico estable para GPT, Codex u otros asistentes. Explica que hace el Workbench, su arquitectura, comandos, flujo X3D/Castle, materiales, GameStart, JSON/IA, diagnostico, pruebas minimas, privacidad y reglas para modificarlo sin romper comportamiento existente.
 
 La pestana **Ayuda > IA / JSON** incluye **Copiar contexto del Workbench para IA**, que copia ese Markdown con una instruccion breve para pegarlo en una conversacion. Esto es diferente de `GEE_ContextJSON`: el Markdown describe el Workbench; el JSON describe la escena concreta.
 
@@ -167,6 +167,52 @@ El comando **Ayuda / Help** usa un icono propio `resources/icons/gameexport_help
 Al activar el Workbench se muestra una ventana corta de primeros pasos una sola vez por sesion. Explica que para comenzar basta usar **Ejemplo rapido** y **Ejecutar en Castle**. El usuario puede marcar `No volver a mostrar este mensaje`; la preferencia se guarda mediante `FreeCAD.ParamGet` y la ventana puede abrirse nuevamente desde la pestana `Primeros pasos` de Ayuda.
 
 ## Materiales e iluminacion interior
+
+### Integracion opcional con Solar Workbench
+
+En **Iluminacion / Lighting > Luz global / Global light** se puede activar
+**Usar Solar Workbench / Use Solar Workbench**. GameEngineExport lee, sin
+modificar el documento, el vector vigente del objeto `SunProperties` y lo
+exporta como `DirectionalLight`. El boton **Sincronizar / Sync** permite
+comprobar la direccion y verla como Yaw/Pitch antes de exportar.
+
+Solar es una dependencia opcional. Si no esta instalado, el documento no tiene
+un `SunProperties` valido o el sol esta bajo el horizonte, la exportacion usa la
+configuracion manual existente y el resto del flujo no cambia. La excepcion es
+el modo interactivo: puede comenzar de noche porque permite avanzar despues a
+una hora diurna.
+
+Al activar **Control solar interactivo X3D / Interactive X3D solar control**, el
+archivo exportado incorpora un controlador CastleScript, un indicador y una
+brujula que permanecen frente a la camara sin quedar ocultos por las paredes.
+La brujula gira con la vista y usa el norte configurado en Solar. Tambien
+incorpora una esfera amarilla que sigue la posicion calculada del sol, el rayo
+con flecha desde esa esfera hasta el centro del diagrama y un diagrama
+hemisferico 3D con trayectorias estacionales y curvas horarias. Ya dentro
+de Castle Model Viewer se usan `J/L` para retroceder o avanzar una hora, `N/M`
+para un dia, `U/O` para siete dias, `C` para ocultar o mostrar solo el diagrama 3D y `R`
+para regresar a la fecha y hora exportadas. La direccion, intensidad,
+componente ambiental y esfera solar se recalculan dentro del X3D; de noche la
+luz solar baja a cero y la esfera se oculta. FreeCAD y Solar no son necesarios
+despues de exportar. Esta funcion no calcula irradiacion ni convierte Sky
+Domes.
+
+Solar is an optional dependency. If it is not installed, the document has no
+valid `SunProperties` object, or the sun is below the horizon, export keeps the
+existing manual global light and the rest of the workflow remains unchanged.
+Interactive mode may start below the horizon because the user can advance to a
+daylight hour after loading the X3D.
+When **Interactive X3D solar control** is enabled, the exported file embeds a
+CastleScript controller plus a status display and compass that remain in front
+of the camera instead of being hidden by walls. The compass rotates with the
+view and uses Solar's configured north. Castle Model Viewer also shows a moving
+sun sphere, its arrowed ray toward the diagram center, and a hemispherical 3D
+seasonal/hour path diagram. Use `J/L` for
+hours, `N/M` for days, `U/O` for seven-day steps, `C` to toggle only the 3D
+diagram, and `R` to reset.
+Direction, intensity, ambient contribution, and the sun sphere update inside
+X3D, without FreeCAD or Solar at runtime. Irradiation and Sky Dome conversion
+remain outside this feature.
 
 En la pestana **Iluminacion / Lighting**, marca **Mejorar iluminacion interior / Improve interior lighting** y usa **Architectural** o **Bright** para interiores cerrados. Este ajuste solo modifica el X3D exportado mediante atributos `ambientIntensity`, `emissiveColor` y `shininess`; no cambia los materiales del archivo `.FCStd`.
 
@@ -218,7 +264,7 @@ Cuando la lista de exportacion esta vacia, el Workbench crea una seleccion 3D au
 
 Antes de llamar al exportador GUI, el Workbench activa temporalmente la visibilidad de los objetos seleccionados y sus grupos padre. Esto evita que FreeCAD omita dispositivos de grupos electricos o HVAC ocultos. Al terminar, incluso si ocurre una excepcion, restaura una instantanea completa de `ViewObject.Visibility` sin guardar el documento.
 
-Para excepciones documentales, un objeto o su master enlazado puede tener propiedades booleanas `GameExportInclude` o `GameExportExclude`. La exclusion tiene prioridad. Estas propiedades son opcionales; el Workbench no las agrega ni modifica automaticamente.
+Para excepciones documentales, un objeto o su master enlazado puede tener propiedades booleanas `GameExportInclude` o `GameExportExclude`. La exclusion tiene prioridad. Estas propiedades son opcionales; el Workbench no las agrega ni modifica automaticamente. Desde 2026-09-01 la exclusion se aplica tambien a selecciones explicitas/listas guardadas y se vuelve a comprobar en la barrera final previa a exportar, por lo que un objeto marcado `GameExportExclude=True` no puede reaparecer por una seleccion antigua.
 
 La deteccion automatica de luminarias acepta nombres comunes, metadatos semanticos como `IfcType`, `PredefinedType`, `ObjectType`, `Category`, `Role`, `EquipmentType`, `DeviceType` y `GameExportRole`, o una propiedad booleana `IsGameExportLuminaire`, `IsLuminaire` o `IsLightFixture`. Siempre exige un solido 3D con volumen antes de generar una luz.
 
@@ -242,7 +288,7 @@ Todos los resultados se escriben en `_castle_debug` junto al X3D: manifiesto JSO
 
 ## Archivos incluidos
 
-- `Init.py`, `InitGui.py`: arranque del workbench y registro de comandos.
+- `freecad/GameEngineExportWB/init_gui.py`: entrada GUI moderna del Workbench; no modifica `sys.path`.
 - `core/`: modulos para exportar, manejar luces, persistencia y utilidades.
 - `ui/`: paneles TaskPanel de escena, configuracion y texto informativo.
 - `commands/`: comando principal GameEngineExport_Open.
@@ -261,14 +307,14 @@ Todos los resultados se escriben en `_castle_debug` junto al X3D: manifiesto JSO
 - `resources/icons/quick_example_roof.svg`: icono del comando para agregar techo simple.
 - `examples/json/quick_example_house_sample.json`: payload de prueba para importacion JSON.
 - `tests/`: pruebas automatizadas puras y de integracion para QA.
-- `translations/`: catalogo fuente y traduccion Qt compilada.
+- `freecad/GameEngineExportWB/resources/translations/`: catalogo fuente y traduccion Qt compilada.
 
 Los archivos de coordinacion, respaldos y `notes/` se conservan en el entorno de desarrollo, pero se excluyen del repositorio publico dedicado y del runtime del Addon.
 
 ## Ubicacion dentro del repositorio / Location inside repository
 
-- `Init.py`, `InitGui.py`, `package.xml` y `README.md` viven en la raiz del repositorio dedicado.
-- Los iconos, texturas y demas recursos estan bajo `resources/` y se resuelven desde la ubicacion del propio Workbench.
+- `package.xml`, `pyproject.toml` y `README.md` viven en la raiz; el codigo runtime vive en `freecad/GameEngineExportWB/`.
+- Los iconos, texturas y demas recursos estan bajo `freecad/GameEngineExportWB/resources/` y se resuelven desde la ubicacion del propio paquete.
 - Un loader del monorepositorio puede seguir usandose durante desarrollo, pero queda fuera del repositorio dedicado y no es necesario para instalar, actualizar o ejecutar el Addon.
 
 ## Workbench vs macro

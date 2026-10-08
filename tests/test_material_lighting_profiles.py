@@ -2,7 +2,7 @@
 
 import unittest
 
-from GameEngineExportWB.core import exporter_x3d
+from freecad.GameEngineExportWB.core import exporter_x3d
 
 
 class MaterialLightingProfileTests(unittest.TestCase):

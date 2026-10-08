@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from GameEngineExportWB.ui.output_defaults import ensure_output_directory
+from freecad.GameEngineExportWB.ui.output_defaults import ensure_output_directory
 
 
 class OutputDirectoryTests(unittest.TestCase):
