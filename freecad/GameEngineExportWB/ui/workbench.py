@@ -1,13 +1,17 @@
-"""Workbench registration for the FreeCAD GUI adapter.
+﻿"""Workbench registration for the FreeCAD GUI adapter.
+
 
 This module is loaded through ``freecad.GameEngineExportWB.init_gui``.
 The Workbench class and methods retain a stable namespaced identity in FreeCAD 1.1.
 """
 
+
 import os
+
 
 import FreeCAD
 import FreeCADGui
+
 
 from .. import i18n
 from ..commands import cmd_add_light_properties
@@ -17,6 +21,7 @@ from ..commands import cmd_castle_diagnostics
 from ..commands import cmd_export_and_launch
 from ..commands import cmd_help
 from ..commands import cmd_import_json_example
+from ..commands import cmd_integrate_solar
 from ..commands import cmd_open_panel
 from ..commands import cmd_quick_examples
 from ..commands import cmd_reload_workbench
@@ -24,12 +29,17 @@ from ..commands import cmd_roof_quick_example
 from . import panel_info
 
 
+
+
 LOG_PREFIX = "[GAMEEXPORT] "
 WORKBENCH_ID = "GameEngineExportWorkbench"
 
 
+
+
 class GameEngineExportWorkbench(FreeCADGui.Workbench):
     """Workbench definition for Game Engine Export WB."""
+
 
     MenuText = i18n.tr("Game Engine Export WB", i18n.WORKBENCH_CONTEXT)
     ToolTip = i18n.tr(
@@ -44,6 +54,7 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
         "gameexport.svg",
     )
     Icon = _icon_path.replace(os.sep, "/")
+
 
     def Initialize(self):  # noqa: N802
         """Register commands and set up menus and toolbars."""
@@ -60,9 +71,11 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
         light_command = cmd_add_light_properties.CommandClass()
         quick_example_command = cmd_quick_examples.CommandClass()
         import_json_command = cmd_import_json_example.CommandClass()
+        integrate_solar_command = cmd_integrate_solar.CommandClass()
         bim_doors_windows_command = cmd_bim_doors_windows.CommandClass()
         roof_command = cmd_roof_quick_example.CommandClass()
         reload_command = cmd_reload_workbench.CommandClass()
+
 
         registered = (
             export_command,
@@ -73,12 +86,14 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
             light_command,
             quick_example_command,
             import_json_command,
+            integrate_solar_command,
             bim_doors_windows_command,
             roof_command,
             reload_command,
         )
         for command in registered:
             FreeCADGui.addCommand(command.CommandName, command)
+
 
         FreeCAD.Console.PrintMessage(
             LOG_PREFIX
@@ -105,6 +120,7 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
             + "\n"
         )
 
+
         main_commands = [
             quick_example_command.CommandName,
             export_launch_command.CommandName,
@@ -113,9 +129,8 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
         ]
         scene_ai_commands = [
             light_command.CommandName,
+            integrate_solar_command.CommandName,
             import_json_command.CommandName,
-            bim_doors_windows_command.CommandName,
-            roof_command.CommandName,
         ]
         diagnostic_commands = [
             analyze_x3d_command.CommandName,
@@ -127,6 +142,7 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
             + diagnostic_commands
             + [reload_command.CommandName]
         )
+
 
         self.appendToolbar(
             i18n.tr("Game Engine Export", i18n.WORKBENCH_CONTEXT),
@@ -152,16 +168,20 @@ class GameEngineExportWorkbench(FreeCADGui.Workbench):
         )
         FreeCAD.Console.PrintMessage(
             LOG_PREFIX
-            + "Toolbars registered: main=4, scene_ai=4, diagnostics=2; "
+            + "Toolbars registered: main=4, scene_ai=3, diagnostics=2; "
             + "reload is menu-only\n"
         )
+
 
     def Activated(self):  # noqa: N802
         FreeCAD.Console.PrintMessage(LOG_PREFIX + "Workbench activated\n")
         panel_info.schedule_startup_tips()
 
+
     def Deactivated(self):  # noqa: N802
         FreeCAD.Console.PrintMessage(LOG_PREFIX + "Workbench deactivated\n")
+
+
 
 
 def _ensure_clean_registration():
@@ -172,6 +192,7 @@ def _ensure_clean_registration():
         )
     except Exception:
         workbenches = {}
+
 
     if WORKBENCH_ID in workbenches and hasattr(FreeCADGui, "removeWorkbench"):
         try:
@@ -192,10 +213,14 @@ def _ensure_clean_registration():
             )
 
 
+
+
 def register_workbench():
     """Register the single current Workbench implementation."""
     _ensure_clean_registration()
     FreeCADGui.addWorkbench(GameEngineExportWorkbench())
+
+
 
 
 __all__ = [

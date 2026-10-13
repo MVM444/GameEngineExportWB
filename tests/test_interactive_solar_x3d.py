@@ -3,11 +3,54 @@
 from __future__ import annotations
 
 import math
+import sys
+import tempfile
+from pathlib import Path
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 import xml.etree.ElementTree as ET
 
 from freecad.GameEngineExportWB.core import exporter_x3d
 from freecad.GameEngineExportWB.core import solar
+
+
+class SolarSnapshotFilterTests(unittest.TestCase):
+    def test_export_filters_only_when_interactive_solar_is_enabled(self):
+        owner = SimpleNamespace(Proxy=type("SunProperties", (), {
+            "__module__": "freecad.Solar.SunProperties"})(), Group=[])
+        sphere = SimpleNamespace(Name="SunLight", TypeId="Part::Sphere", InList=[owner])
+        owner.Group = [sphere]
+        building = SimpleNamespace(Name="Building")
+        with tempfile.TemporaryDirectory() as tmp, patch.dict(sys.modules, {
+            "FreeCAD": SimpleNamespace(), "FreeCADGui": SimpleNamespace()}):
+            for enabled in (False, True):
+                config = {"global": {"enabled": True, "interactive_solar": {"enabled": enabled}}}
+                with patch.object(exporter_x3d, "diagnose_export_candidates", side_effect=RuntimeError("stop")) as diagnose:
+                    with self.assertRaisesRegex(RuntimeError, "stop"):
+                        exporter_x3d.export_to_x3d([building, sphere], Path(tmp)/"test.x3d", lighting_cfg=config)
+                    self.assertEqual([building] if enabled else [building, sphere], diagnose.call_args.args[0])
+
+    def test_requires_real_solar_ownership_and_specific_helper_name(self):
+        owner = SimpleNamespace(Proxy=type("SunProperties", (), {
+            "__module__": "freecad.Solar.SunProperties"})(), Group=[])
+        sphere = SimpleNamespace(Name="SunLight", TypeId="Part::Sphere", InList=[])
+        self.assertFalse(exporter_x3d._is_solar_representation(sphere))
+        sphere.InList = [owner]
+        owner.Group = [sphere]
+        self.assertTrue(exporter_x3d._is_solar_representation(sphere))
+        sphere.Name = "UserSphere"
+        self.assertFalse(exporter_x3d._is_solar_representation(sphere))
+
+    def test_preserves_unrelated_wire_inside_solar_group(self):
+        wire = SimpleNamespace(Name="Line", Proxy=type("Wire", (), {
+            "__module__": "draftobjects.wire"})())
+        owner = SimpleNamespace(Proxy=type("SunProperties", (), {
+            "__module__": "freecad.Solar.SunProperties"})(), Group=[wire])
+        wire.InList = [owner]
+        self.assertTrue(exporter_x3d._is_solar_representation(wire))
+        wire.Name = "UserBoundary"
+        self.assertFalse(exporter_x3d._is_solar_representation(wire))
 
 
 def _lighting_config():
@@ -44,6 +87,44 @@ def _lighting_config():
 
 
 class InteractiveSolarX3DTests(unittest.TestCase):
+    def test_initial_night_hides_sun_and_ray_without_waiting_for_key(self):
+        config = _lighting_config()
+        config["global"]["interactive_solar"]["initial_hour"] = 0
+        scene = ET.Element("Scene")
+        scene.append(exporter_x3d._make_directional_light(lambda t:t, config["global"]))
+        exporter_x3d._insert_interactive_solar_controller(scene, lambda t:t, config)
+        for name in ("GameExport_SolarSunMaterial", "GameExport_SolarRayMaterial"):
+            material = next(n for n in scene.iter() if n.attrib.get("DEF") == name)
+            self.assertEqual("1", material.attrib["transparency"])
+
+    def test_initial_hud_azimuth_remains_true_when_model_north_is_rotated(self):
+        config = _lighting_config()
+        config["global"]["interactive_solar"]["north_deg"] = 90.0
+        scene = ET.Element("Scene")
+        scene.append(
+            exporter_x3d._make_directional_light(
+                lambda tag: tag,
+                config["global"],
+            )
+        )
+        self.assertTrue(
+            exporter_x3d._insert_interactive_solar_controller(
+                scene, lambda tag: tag, config
+            )
+        )
+        text = next(
+            node
+            for node in scene.iter()
+            if node.attrib.get("DEF") == "GameExport_SolarHUDText"
+        ).attrib["string"]
+        true_sun = solar.approximate_sun_position(
+            80, 12, 9.9281, -84.0907, -6.0, 0.0
+        )
+        expected_azimuth = round(
+            math.degrees(math.atan2(true_sun[0], true_sun[1])) % 360.0
+        )
+        self.assertIn("AZ {} deg".format(expected_azimuth), text)
+
     def test_shadow_projection_uses_freecad_geometry_bounds(self):
         scene = ET.Element("Scene")
         transform = ET.SubElement(
@@ -101,6 +182,11 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         actual_direction = tuple(float(value) for value in light.attrib["direction"].split())
         for actual, expected in zip(actual_direction, expected_direction):
             self.assertAlmostEqual(expected, actual, places=6)
+        sun_node = next(n for n in scene.iter() if n.attrib.get("DEF") == "GameExport_SolarSunTransform")
+        radius = exporter_x3d._solar_visualization_config(config)["radius_m"]
+        initial_position = tuple(float(v) for v in sun_node.attrib["translation"].split())
+        for actual, direction in zip(initial_position, expected_direction):
+            self.assertAlmostEqual(actual, -direction * radius, places=5)
         self.assertGreater(float(light.attrib["intensity"]), 0.0)
 
         location = tuple(
@@ -149,6 +235,7 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         self.assertIn("GameExport_SolarHUDCompass", defs)
         self.assertIn("GameExport_SolarHUDCompassDial", defs)
         self.assertIn("GameExport_SolarHUDCompassScript", defs)
+        self.assertIn("GameExport_SolarHUDHelpSwitch", defs)
 
         routes = {
             (
@@ -206,7 +293,7 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         )
         self.assertIn(
             (
-                "GameExport_SolarController",
+                "GameExport_SolarCalculator",
                 "label_changed",
                 "GameExport_SolarHUDText",
                 "string",
@@ -219,6 +306,15 @@ class InteractiveSolarX3DTests(unittest.TestCase):
                 "orientation_changed",
                 "GameExport_SolarHUDCompassScript",
                 "camera_orientation",
+            ),
+            routes,
+        )
+        self.assertIn(
+            (
+                "GameExport_SolarController",
+                "help_changed",
+                "GameExport_SolarHUDHelpSwitch",
+                "whichChoice",
             ),
             routes,
         )
@@ -274,17 +370,23 @@ class InteractiveSolarX3DTests(unittest.TestCase):
             if node.attrib.get("DEF") == "GameExport_SolarController"
         )
         script = controller.attrib["url"]
-        self.assertIn("SOLAR ", script)
         self.assertIn("week_step", script)
         self.assertIn("state_changed", script)
+        self.assertIn("value = 'H'", script)
 
         hud_help = next(
             node
             for node in scene.iter()
-            if node.attrib.get("DEF") == "GameExport_SolarHUDHelp"
+            if node.attrib.get("DEF") == "GameExport_SolarHUDHelpLanguageSwitch"
         )
-        self.assertIn("J/L  HORA", hud_help.attrib["string"])
-        self.assertIn("C  DIAGRAMA", hud_help.attrib["string"])
+        help_texts = [node.attrib["string"] for node in hud_help.iter("Text")]
+        self.assertEqual(2, len(help_texts))
+        self.assertIn("J/L  15 MIN", help_texts[0])
+        self.assertIn("C  DIAGRAM", help_texts[0])
+        self.assertIn("I  LANGUAGE", help_texts[0])
+        self.assertIn("J/L  15 MIN", help_texts[1])
+        self.assertIn("C  DIAGRAMA", help_texts[1])
+        self.assertIn("I  IDIOMA", help_texts[1])
 
         compass_script = next(
             node
@@ -308,6 +410,9 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         self.assertIn("shadow_up_changed", calculator_script.attrib["url"])
         self.assertIn("shadow_near_changed", calculator_script.attrib["url"])
         self.assertIn("shadow_far_changed", calculator_script.attrib["url"])
+        self.assertIn("altitude_deg", calculator_script.attrib["url"])
+        self.assertIn("azimuth_deg", calculator_script.attrib["url"])
+        self.assertIn("label_changed", calculator_script.attrib["url"])
 
         light = next(
             node
@@ -329,12 +434,16 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         panel_translation = tuple(
             float(value) for value in hud_panel.attrib["translation"].split()
         )
-        self.assertGreater(panel_translation[2], -0.2)
-        self.assertLess(panel_translation[2], -0.05)
-        self.assertLess(panel_translation[0], -0.12)
-        self.assertGreater(panel_translation[1], 0.08)
+        self.assertEqual(-0.5, panel_translation[2])
+        self.assertEqual((0.0, 0.0), panel_translation[:2])
         panel_scale = tuple(float(value) for value in hud_panel.attrib["scale"].split())
-        self.assertEqual((0.04125, 0.04125, 0.04125), panel_scale)
+        self.assertEqual((0.025, 0.025, 0.025), panel_scale)
+        effect = hud_panel.find("Effect/EffectPart")
+        self.assertIsNotNone(effect)
+        self.assertIn("castle_ProjectionMatrix", effect.attrib["url"])
+        self.assertIn("max(projection.x, projection.y)", effect.attrib["url"])
+        self.assertIn("local * 0.44 * ratio", effect.attrib["url"])
+        self.assertIn("near_clip", effect.attrib["url"])
 
         hud_compass = next(
             node
@@ -347,9 +456,26 @@ class InteractiveSolarX3DTests(unittest.TestCase):
         compass_scale = tuple(
             float(value) for value in hud_compass.attrib["scale"].split()
         )
-        self.assertGreater(compass_translation[0], 0.11)
-        self.assertGreater(compass_translation[1], 0.08)
-        self.assertEqual((0.010875, 0.010875, 0.010875), compass_scale)
+        self.assertEqual((0.0, 0.0), compass_translation[:2])
+        self.assertEqual((0.006, 0.006, 0.006), compass_scale)
+        self.assertIsNotNone(hud_compass.find("Effect/EffectPart"))
+
+        visualization_switch = next(
+            node
+            for node in scene.iter()
+            if node.attrib.get("DEF") == "GameExport_SolarVisualizationSwitch"
+        )
+        help_switch = next(
+            node
+            for node in scene.iter()
+            if node.attrib.get("DEF") == "GameExport_SolarHUDHelpSwitch"
+        )
+        self.assertEqual("-1", visualization_switch.attrib["whichChoice"])
+        self.assertFalse(any(n.attrib.get("DEF") == "GameExport_SolarSunTransform"
+                             for n in visualization_switch.iter()))
+        self.assertEqual(1, sum(n.attrib.get("DEF") == "GameExport_SolarSunTransform"
+                                for n in scene.iter()))
+        self.assertEqual("-1", help_switch.attrib["whichChoice"])
 
         self.assertGreaterEqual(
             sum(1 for node in scene.iter() if node.tag == "UnlitMaterial"),

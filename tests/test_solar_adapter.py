@@ -21,6 +21,17 @@ class _Document:
         return None
 
 
+class _Parameters:
+    def __init__(self):
+        self.values = {}
+
+    def SetBool(self, key, value):
+        self.values[key] = bool(value)
+
+    def SetFloat(self, key, value):
+        self.values[key] = float(value)
+
+
 def _solar_object(**overrides):
     values = {
         "Name": "SunProperties",
@@ -46,6 +57,37 @@ def _solar_object(**overrides):
 
 
 class SolarAdapterTests(unittest.TestCase):
+    def test_sync_persists_existing_solar_state_in_geewb_preferences(self):
+        parameters = _Parameters()
+
+        sync = solar_adapter.sync_gameengine_preferences(
+            _Document([_solar_object()]),
+            parameters,
+            availability_probe=lambda: True,
+        )
+
+        self.assertTrue(sync.updated)
+        self.assertTrue(parameters.values["gl_enabled"])
+        self.assertTrue(parameters.values["gl_use_solar_workbench"])
+        self.assertTrue(parameters.values["gl_interactive_solar_x3d"])
+        expected_yaw, expected_pitch = solar.direction_to_yaw_pitch(
+            sync.discovery.environment.direction_freecad
+        )
+        self.assertAlmostEqual(expected_yaw, parameters.values["gl_yaw"])
+        self.assertAlmostEqual(expected_pitch, parameters.values["gl_pitch"])
+
+    def test_sync_does_not_change_preferences_when_solar_is_unavailable(self):
+        parameters = _Parameters()
+
+        sync = solar_adapter.sync_gameengine_preferences(
+            _Document([_solar_object()]),
+            parameters,
+            availability_probe=lambda: False,
+        )
+
+        self.assertFalse(sync.updated)
+        self.assertEqual({}, parameters.values)
+
     def test_missing_workbench_keeps_adapter_inactive(self):
         result = solar_adapter.discover_sun_environment(
             _Document([_solar_object()]), availability_probe=lambda: False

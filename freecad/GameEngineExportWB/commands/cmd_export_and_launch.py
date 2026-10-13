@@ -35,7 +35,7 @@ ICON_PATH = os.path.abspath(
     )
 ).replace(os.sep, "/")
 
-FINGERPRINT_VERSION = "gameexport-scene-v6-camera-fill"
+FINGERPRINT_VERSION = "gameexport-scene-v7-solar-screen-hud"
 SIDECAR_CACHE_KEY = "export_launch_cache"
 VIEW_PROPERTIES = (
     "Visibility",

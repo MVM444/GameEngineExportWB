@@ -31,6 +31,7 @@ A new user should be able to understand the Workbench by trying those two comman
 ### Scene / AI toolbar
 
 - Add Light Properties: prepares FreeCAD objects with GameEngineExport light metadata.
+- Integrate with Solar: runs Solar's registered SunPathDialog, then synchronizes GEEWB from SunProperties only after Apply/Accept; Cancel leaves GEEWB unchanged and the active Workbench is preserved.
 - Import JSON / AI: manual copy/paste bridge between an AI and a Quick Example scene.
 - BIM Doors and Windows: adds BIM openings to the relevant example workflow.
 - Add Roof: adds a simple roof to the Quick Example workflow.
@@ -63,7 +64,7 @@ Rules:
 
 - `freecad/GameEngineExportWB/init_gui.py`: modern FreeCAD GUI bootstrap and Workbench registration; runtime code must not modify `sys.path`.
 - `commands/`: thin FreeCAD command wrappers.
-- `adapters/`: optional, read-only translations from external Workbenches into neutral core models.
+- `adapters/`: optional translations from external Workbenches into neutral core models; external data remains read-only, while an adapter may persist GEEWB preferences.
 - `core/`: reusable logic such as export, GameStart, lights, materials, JSON/AI helpers, persistence, and diagnostics.
 - `ui/`: TaskPanels, Help/Information, output defaults, and GUI-specific behavior.
 - `freecad/GameEngineExportWB/resources/icons/`: command and Workbench SVG icons.
@@ -83,17 +84,23 @@ GameStart defines the initial exported X3D viewpoint. Quick Examples should plac
 
 The Workbench can export PointLight, SpotLight, and DirectionalLight information from FreeCAD objects/properties. Light-property tools and automatic luminaire detection are complementary. Lighting profiles are visualization aids and are not a substitute for formal lighting calculations.
 
-Solar Workbench integration is optional and read-only. `adapters/solar_adapter.py`
-reads the persisted Solar `SunProperties` vector and translates it into the
-neutral `core.solar.SunEnvironment`; the X3D exporter must not import Solar or
-Ladybug. When Solar or a valid above-horizon sun is unavailable, the existing
-manual global-light configuration remains authoritative.
+Solar Workbench integration is optional and read-only with respect to Solar.
+The `Integrate with Solar` command runs Solar's registered `SunPathDialog`, which
+owns creation/reuse of `SunProperties` and all astronomical calculations. After
+Solar calls its own save operation through Apply or Accept,
+`adapters/solar_adapter.py` reads the persisted Solar vector,
+translates it into the neutral `core.solar.SunEnvironment`, and may persist the
+equivalent GEEWB preferences. The X3D exporter must not import Solar or Ladybug.
+When Solar or valid sun data is unavailable, existing GEEWB features remain
+available and the manual global-light configuration remains authoritative.
 
 The optional interactive X3D solar control exports only neutral location,
 calendar, time-zone, and north metadata. The X3D contains a CastleScript
-controller that updates the DirectionalLight direction, intensity, and ambient
-contribution at runtime. Controls are J/L for hours, N/M for days, U/O for
-seven-day steps, and R to reset. Generated controller nodes use the stable
+controller that updates the DirectionalLight direction, intensity, ambient
+contribution, HUD altitude/azimuth and dynamic shadow projection at runtime.
+Controls are J/L for hours, N/M for days, U/O for seven-day steps, C for the
+initially hidden spatial diagram, H for on-demand help, and R to reset.
+Generated controller nodes use the stable
 `GameExport_Solar` DEF prefix and decoration must remain idempotent.
 
 ## 7. Materials, textures, polished surfaces, and mirrors

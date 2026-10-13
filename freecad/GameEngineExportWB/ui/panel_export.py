@@ -401,22 +401,36 @@ class ExportTaskPanel:
         self.btn_sync_solar_workbench.clicked.connect(self._sync_from_solar_workbench)
         layout.addWidget(self.btn_sync_solar_workbench, 5, 1)
 
+        self.btn_integrate_solar_workbench = QtGui.QPushButton(
+            i18n.bi("Integrar con Solar...", "Integrate with Solar...")
+        )
+        self.btn_integrate_solar_workbench.setToolTip(
+            i18n.bi(
+                "Abre SunPathDialog de Solar y sincroniza solamente los cambios aplicados o aceptados.",
+                "Open Solar's SunPathDialog and synchronize only applied or accepted changes.",
+            )
+        )
+        self.btn_integrate_solar_workbench.clicked.connect(
+            self._integrate_with_solar_workbench
+        )
+        layout.addWidget(self.btn_integrate_solar_workbench, 6, 0, 1, 2)
+
         self.chk_interactive_solar_x3d = QtGui.QCheckBox(
             i18n.bi("Control solar interactivo X3D", "Interactive X3D solar control")
         )
         self.chk_interactive_solar_x3d.setToolTip(
             i18n.bi(
-                "Permite cambiar la hora, el dia o la semana dentro de Castle e incluye brujula de pantalla, esfera, rayo y diagrama solar 3D: J/L hora, N/M dia, U/O semana, C diagrama y R reiniciar.",
-                "Change hour, day, or week inside Castle and include an on-screen compass, sun sphere, ray, and 3D solar diagram: J/L hour, N/M day, U/O week, C diagram, and R reset.",
+                "Permite cambiar hora, dia o semana en Castle. El diagrama inicia oculto: J/L hora, N/M dia, U/O semana, C diagrama, H ayuda y R reiniciar.",
+                "Change hour, day, or week in Castle. The diagram starts hidden: J/L hour, N/M day, U/O week, C diagram, H help, and R reset.",
             )
         )
-        layout.addWidget(self.chk_interactive_solar_x3d, 6, 0, 1, 2)
+        layout.addWidget(self.chk_interactive_solar_x3d, 7, 0, 1, 2)
 
         self.chk_camera_fill = QtGui.QCheckBox(i18n.bi("Relleno de camara", "Camera fill"))
         self.chk_camera_fill.setToolTip(
             i18n.bi('Agrega una sola luz tenue asociada a la camara para aclarar superficies visibles sin recuperar los circulos de PointLight.', 'Add one low-intensity camera light to brighten visible surfaces without PointLight halos.')
         )
-        layout.addWidget(self.chk_camera_fill, 7, 0)
+        layout.addWidget(self.chk_camera_fill, 8, 0)
 
         self.spin_camera_fill_intensity = QtGui.QDoubleSpinBox()
         self.spin_camera_fill_intensity.setRange(0.0, 1.5)
@@ -425,13 +439,13 @@ class ExportTaskPanel:
         self.spin_camera_fill_intensity.setToolTip(
             i18n.bi('Intensidad recomendada para interiores: 0.45.', 'Recommended interior intensity: 0.45.')
         )
-        layout.addWidget(self.spin_camera_fill_intensity, 7, 1)
+        layout.addWidget(self.spin_camera_fill_intensity, 8, 1)
 
         self.chk_gl_shadows = QtGui.QCheckBox(i18n.bi("Sombras", "Shadows"))
         self.chk_gl_shadows.setToolTip(
             i18n.bi('Activa sombras X3D para la luz global. Puede bajar el rendimiento.', 'Enable X3D shadows for the global light. May reduce performance.')
         )
-        layout.addWidget(self.chk_gl_shadows, 8, 0, 1, 2)
+        layout.addWidget(self.chk_gl_shadows, 9, 0, 1, 2)
 
         return group
 
@@ -2564,21 +2578,28 @@ class ExportTaskPanel:
         self.sidecar_data["global_light"] = gl_cfg
 
     def _sync_from_solar_workbench(self):
-        result = solar_adapter.discover_sun_environment(
+        sync = solar_adapter.sync_gameengine_preferences(
             FreeCAD.ActiveDocument,
+            self.params,
             allow_below_horizon=True,
         )
+        self._apply_solar_sync(sync)
+
+    def _apply_solar_sync(self, sync) -> bool:
+        """Reflect one adapter result in the open panel without recalculation."""
+        result = sync.discovery
         environment = result.environment
-        if environment is None:
+        if environment is None or not sync.updated:
             self.status_label.setText(
                 i18n.bi("Solar no disponible: ", "Solar unavailable: ") + result.reason
             )
             FreeCAD.Console.PrintWarning(
                 "[GAMEEXPORT][WARN] Solar sync skipped: " + result.reason + "\n"
             )
-            return
+            return False
 
-        yaw, pitch = solar.direction_to_yaw_pitch(environment.direction_freecad)
+        yaw = float(sync.yaw_deg)
+        pitch = float(sync.pitch_deg)
         self.chk_global_light.setChecked(True)
         self.chk_use_solar_workbench.setChecked(True)
         self.chk_interactive_solar_x3d.setChecked(True)
@@ -2593,6 +2614,35 @@ class ExportTaskPanel:
             + environment.source_object_name
             + "\n"
         )
+        return True
+
+    def _integrate_with_solar_workbench(self):
+        """Open Solar's own dialog, then refresh this panel if Solar saved."""
+        try:
+            from ..commands import cmd_integrate_solar
+
+            result = cmd_integrate_solar.run_solar_integration(self)
+        except Exception as exc:
+            self.status_label.setText(
+                i18n.bi(
+                    "No se pudo integrar Solar: ",
+                    "Could not integrate Solar: ",
+                )
+                + str(exc)
+            )
+            FreeCAD.Console.PrintWarning(
+                "[GAMEEXPORT][WARN] Solar integration failed: " + str(exc) + "\n"
+            )
+            return
+
+        if result.synchronized:
+            self._apply_solar_sync(result.sync)
+            return
+        self.status_label.setText(result.reason)
+        if result.status not in {"cancelled"}:
+            FreeCAD.Console.PrintWarning(
+                "[GAMEEXPORT][WARN] Solar integration skipped: " + result.reason + "\n"
+            )
 
     def _compute_solar_angles(
         self, latitude: float, longitude: float, tz_hours: float, dt: datetime.datetime

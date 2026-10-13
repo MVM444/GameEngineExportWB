@@ -1,7 +1,8 @@
-"""Read a static sun state from the optional FreeCAD Solar Workbench.
+"""Read and synchronize a sun state from the optional Solar Workbench.
 
 The adapter consumes Solar's persisted ``SunProperties`` document object. It
-does not import Ladybug, execute Solar commands or recompute the document.
+does not import Ladybug, execute Solar commands or recompute the document. It
+may persist the equivalent GameEngineExportWB preferences after Solar finishes.
 """
 
 from __future__ import annotations
@@ -15,6 +16,7 @@ from typing import Callable, Iterable, Optional, Tuple
 from ..core.solar import (
     SunEnvironment,
     direction_from_altitude_azimuth,
+    direction_to_yaw_pitch,
     normalize_direction,
 )
 
@@ -31,6 +33,16 @@ class SolarDiscoveryResult:
     workbench_available: bool
     reason: str
     object_name: str = ""
+
+
+@dataclass(frozen=True)
+class SolarPreferenceSyncResult:
+    """Outcome of copying an existing Solar state into GEEWB preferences."""
+
+    discovery: SolarDiscoveryResult
+    updated: bool
+    yaw_deg: Optional[float] = None
+    pitch_deg: Optional[float] = None
 
 
 def solar_workbench_available() -> bool:
@@ -89,6 +101,42 @@ def discover_sun_environment(
         True,
         reason,
         str(getattr(candidates[0], "Name", "") or ""),
+    )
+
+
+def sync_gameengine_preferences(
+    document: object,
+    parameters: object,
+    availability_probe: Callable[[], bool] = solar_workbench_available,
+    allow_below_horizon: bool = True,
+) -> SolarPreferenceSyncResult:
+    """Persist GEEWB's view of Solar without duplicating Solar calculations.
+
+    Solar remains the owner of ``SunProperties`` and of all astronomical
+    calculations. This function only reads the resulting light direction,
+    converts it with GEEWB's existing neutral helper and enables the already
+    supported Solar/export preferences.
+    """
+    discovery = discover_sun_environment(
+        document,
+        availability_probe=availability_probe,
+        allow_below_horizon=allow_below_horizon,
+    )
+    environment = discovery.environment
+    if environment is None:
+        return SolarPreferenceSyncResult(discovery=discovery, updated=False)
+
+    yaw, pitch = direction_to_yaw_pitch(environment.direction_freecad)
+    parameters.SetBool("gl_enabled", True)
+    parameters.SetBool("gl_use_solar_workbench", True)
+    parameters.SetBool("gl_interactive_solar_x3d", True)
+    parameters.SetFloat("gl_yaw", float(yaw))
+    parameters.SetFloat("gl_pitch", float(pitch))
+    return SolarPreferenceSyncResult(
+        discovery=discovery,
+        updated=True,
+        yaw_deg=float(yaw),
+        pitch_deg=float(pitch),
     )
 
 
@@ -236,6 +284,8 @@ def _metadata_from_object(obj: object) -> dict:
 
 __all__ = [
     "SolarDiscoveryResult",
+    "SolarPreferenceSyncResult",
     "discover_sun_environment",
     "solar_workbench_available",
+    "sync_gameengine_preferences",
 ]

@@ -72,7 +72,22 @@ class AddonDistributionTests(unittest.TestCase):
         self.assertIn("scene_ai_commands = [", source)
         self.assertIn("diagnostic_commands = [", source)
         self.assertIn("+ [reload_command.CommandName]", source)
+        self.assertIn("integrate_solar_command.CommandName", source)
         self.assertEqual(source.count("self.appendToolbar("), 3)
+
+    def test_solar_command_reuses_solar_dialog_and_adapter(self):
+        source = (PACKAGE / "commands" / "cmd_integrate_solar.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('CommandName = "GameEngineExport_IntegrateSolar"', source)
+        self.assertIn('SOLAR_DIALOG_MODULE = "freecad.Solar.SunDialog"', source)
+        self.assertIn('SOLAR_COMMAND_ID = "SunPathDialog"', source)
+        self.assertIn("FreeCADGui.listCommands()", source)
+        self.assertIn("FreeCADGui.runCommand(SOLAR_COMMAND_ID)", source)
+        self.assertIn("dialog_class.save_to_propeties = observed_save", source)
+        self.assertIn('if not observed["applied"]:', source)
+        self.assertIn("solar_adapter.sync_gameengine_preferences(", source)
+        self.assertIn("FreeCADGui.activateWorkbench(WORKBENCH_ID)", source)
 
     def test_export_cache_excludes_pointer_backed_shape_material(self):
         source = (PACKAGE / "commands" / "cmd_export_and_launch.py").read_text(encoding="utf-8")
@@ -93,6 +108,7 @@ class AddonDistributionTests(unittest.TestCase):
             "resources/icons/analyze_x3d.svg", "resources/icons/castle_diagnostics.svg",
             "resources/icons/add_light_properties.svg", "resources/icons/import_json_example.svg",
             "resources/icons/bim_doors_windows.svg", "resources/icons/quick_example_roof.svg",
+            "resources/icons/integrate_solar.svg",
             "resources/icons/reload_workbench.svg", "resources/translations/GameEngineExportWB_es-ES.qm",
             "macros/AgregarPuertasVentanasBIM_QuickExample.FCMacro",
             "macros/AgregarTechoBIM_QuickExample.FCMacro", "AI_CONTEXT.md",
@@ -103,7 +119,7 @@ class AddonDistributionTests(unittest.TestCase):
     def test_runtime_assets_are_real_not_staging_placeholders(self):
         icons = sorted((PACKAGE / "resources" / "icons").glob("*.svg"))
         textures = sorted((PACKAGE / "resources" / "textures").glob("*.png"))
-        self.assertGreaterEqual(len(icons), 11)
+        self.assertGreaterEqual(len(icons), 12)
         self.assertGreaterEqual(len(textures), 7)
         for icon in icons:
             image_xml = ET.parse(icon).getroot()

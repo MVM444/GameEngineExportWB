@@ -17,6 +17,7 @@ import math
 import re
 import shutil
 import unicodedata
+import datetime
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -155,6 +156,12 @@ def export_to_x3d(
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     object_list = [obj for obj in objects if obj is not None]
+    global_cfg = (lighting_cfg or {}).get("global", {})
+    control = global_cfg.get("interactive_solar", {})
+    if global_cfg.get("enabled") and control.get("enabled"):
+        # Solar's document sphere is a snapshot, not the interactive sun.
+        # Filter only positively identified Solar helpers; never edit the model.
+        object_list = [obj for obj in object_list if not _is_solar_representation(obj)]
     if not object_list:
         raise ValueError("No objects provided for export")
 
@@ -577,7 +584,7 @@ def decorate_x3d(
         root.attrib["version"] = "4.0"
         FreeCAD.Console.PrintMessage(
             LOG_PREFIX
-            + "Inserted interactive solar controls: J/L hour, N/M day, U/O week, C diagram, R reset\n"
+            + "Inserted interactive solar controls: J/L 15-minute steps, N/M day, U/O week, C diagram, H help, I language, R reset\n"
         )
     emitter_material_count = _apply_light_source_emissive_materials(scene, q, material_cfg)
     object_material_count = _apply_object_material_assignments(scene, q, file_path, material_cfg)
@@ -2265,6 +2272,8 @@ def _insert_interactive_solar_controller(
     except (TypeError, ValueError):
         return False
 
+    hud_language = _solar_hud_export_language(control)
+    hud_language_choice = 1 if hud_language == "es" else 0
     visualization = _solar_visualization_config(control)
     initial_sun = solar_core.approximate_sun_position(
         initial_day,
@@ -2273,6 +2282,14 @@ def _insert_interactive_solar_controller(
         longitude_deg,
         timezone_hours,
         north_deg,
+    )
+    initial_true_sun = solar_core.approximate_sun_position(
+        initial_day,
+        initial_hour,
+        latitude_deg,
+        longitude_deg,
+        timezone_hours,
+        0.0,
     )
     initial_direction = (
         -initial_sun[0],
@@ -2323,6 +2340,12 @@ def _insert_interactive_solar_controller(
     hud_sensor_def = SOLAR_CONTROL_DEF_PREFIX + "HUDSensor"
     hud_def = SOLAR_CONTROL_DEF_PREFIX + "HUD"
     hud_text_def = SOLAR_CONTROL_DEF_PREFIX + "HUDText"
+    hud_text_es_def = SOLAR_CONTROL_DEF_PREFIX + "HUDTextES"
+    hud_language_switch_def = SOLAR_CONTROL_DEF_PREFIX + "HUDLanguageSwitch"
+    hud_hint_language_switch_def = SOLAR_CONTROL_DEF_PREFIX + "HUDHintLanguageSwitch"
+    hud_help_language_switch_def = SOLAR_CONTROL_DEF_PREFIX + "HUDHelpLanguageSwitch"
+    hud_west_language_switch_def = SOLAR_CONTROL_DEF_PREFIX + "HUDWestLanguageSwitch"
+    hud_help_switch_def = SOLAR_CONTROL_DEF_PREFIX + "HUDHelpSwitch"
     hud_compass_script_def = SOLAR_CONTROL_DEF_PREFIX + "HUDCompassScript"
     hud_compass_dial_def = SOLAR_CONTROL_DEF_PREFIX + "HUDCompassDial"
     visualization_switch_def = SOLAR_CONTROL_DEF_PREFIX + "VisualizationSwitch"
@@ -2378,7 +2401,7 @@ def _insert_interactive_solar_controller(
         controller,
         q,
         "hour",
-        "SFInt32",
+        "SFFloat",
         "initializeOnly",
         str(initial_hour),
     )
@@ -2394,7 +2417,7 @@ def _insert_interactive_solar_controller(
         controller,
         q,
         "initial_hour",
-        "SFInt32",
+        "SFFloat",
         "initializeOnly",
         str(initial_hour),
     )
@@ -2423,16 +2446,29 @@ def _insert_interactive_solar_controller(
         "false",
     )
     _append_script_field(controller, q, "state_changed", "SFVec2f", "outputOnly")
-    _append_script_field(controller, q, "label_changed", "MFString", "outputOnly")
     _append_script_field(
         controller,
         q,
         "diagram_choice",
         "SFInt32",
         "initializeOnly",
-        "0",
+        "-1",
     )
     _append_script_field(controller, q, "diagram_changed", "SFInt32", "outputOnly")
+    _append_script_field(
+        controller,
+        q,
+        "help_choice",
+        "SFInt32",
+        "initializeOnly",
+        "-1",
+    )
+    _append_script_field(controller, q, "help_changed", "SFInt32", "outputOnly")
+    _append_script_field(
+        controller, q, "language_choice", "SFInt32", "initializeOnly",
+        str(hud_language_choice),
+    )
+    _append_script_field(controller, q, "language_changed", "SFInt32", "outputOnly")
     scene.append(controller)
 
     calculator = ET.Element(
@@ -2443,6 +2479,10 @@ def _insert_interactive_solar_controller(
         },
     )
     _append_script_field(calculator, q, "state", "SFVec2f", "inputOnly")
+    _append_script_field(calculator, q, "year", "SFInt32", "initializeOnly", str(year))
+    _append_script_field(
+        calculator, q, "days_in_year", "SFInt32", "initializeOnly", str(days_in_year)
+    )
     for name, value in (
         ("latitude_rad", math.radians(latitude_deg)),
         ("longitude_deg", longitude_deg),
@@ -2481,6 +2521,13 @@ def _insert_interactive_solar_controller(
         "model_east",
         "model_north",
         "daylight",
+        "altitude_deg",
+        "azimuth",
+        "azimuth_deg",
+        "month",
+        "month_day",
+        "feb_days",
+        "minute",
     ):
         _append_script_field(
             calculator,
@@ -2490,6 +2537,9 @@ def _insert_interactive_solar_controller(
             "initializeOnly",
             "0",
         )
+    _append_script_field(
+        calculator, q, "time_suffix", "SFString", "initializeOnly", ":00"
+    )
     _append_script_field(calculator, q, "direction_changed", "SFVec3f", "outputOnly")
     _append_script_field(calculator, q, "intensity_changed", "SFFloat", "outputOnly")
     _append_script_field(calculator, q, "ambient_changed", "SFFloat", "outputOnly")
@@ -2525,6 +2575,8 @@ def _insert_interactive_solar_controller(
     _append_script_field(calculator, q, "ray_translation_changed", "SFVec3f", "outputOnly")
     _append_script_field(calculator, q, "ray_rotation_changed", "SFRotation", "outputOnly")
     _append_script_field(calculator, q, "sun_transparency_changed", "SFFloat", "outputOnly")
+    _append_script_field(calculator, q, "label_changed", "MFString", "outputOnly")
+    _append_script_field(calculator, q, "label_es_changed", "MFString", "outputOnly")
     scene.append(calculator)
 
     compass_script = ET.Element(
@@ -2590,10 +2642,13 @@ def _insert_interactive_solar_controller(
             q,
             hud_def,
             hud_text_def,
+            hud_help_switch_def,
             hud_compass_dial_def,
             year,
             initial_day,
             initial_hour,
+            initial_true_sun,
+            hud_language_choice,
         )
     )
     scene.append(
@@ -2606,6 +2661,7 @@ def _insert_interactive_solar_controller(
             ray_material_def,
             visualization,
             days_in_year=days_in_year,
+            initial_sun=initial_sun,
             latitude_deg=latitude_deg,
             longitude_deg=longitude_deg,
             timezone_hours=timezone_hours,
@@ -2624,8 +2680,14 @@ def _insert_interactive_solar_controller(
         (calculator_def, "ray_rotation_changed", ray_transform_def, "rotation"),
         (calculator_def, "sun_transparency_changed", sun_material_def, "transparency"),
         (calculator_def, "sun_transparency_changed", ray_material_def, "transparency"),
-        (controller_def, "label_changed", hud_text_def, "string"),
+        (calculator_def, "label_changed", hud_text_def, "string"),
+        (calculator_def, "label_es_changed", hud_text_es_def, "string"),
+        (controller_def, "language_changed", hud_language_switch_def, "whichChoice"),
+        (controller_def, "language_changed", hud_hint_language_switch_def, "whichChoice"),
+        (controller_def, "language_changed", hud_help_language_switch_def, "whichChoice"),
+        (controller_def, "language_changed", hud_west_language_switch_def, "whichChoice"),
         (controller_def, "diagram_changed", visualization_switch_def, "whichChoice"),
+        (controller_def, "help_changed", hud_help_switch_def, "whichChoice"),
         (hud_sensor_def, "position_changed", hud_def, "translation"),
         (hud_sensor_def, "orientation_changed", hud_def, "rotation"),
         (
@@ -2704,20 +2766,23 @@ def _solar_controller_castlescript() -> str:
 function initialize(timestamp)
   state_changed := vector(float(day), float(hour));
   diagram_changed := diagram_choice;
-  label_changed := array('SOLAR ' + string(year) + '  |  DIA ' + string(day) + '  |  ' + string(hour) + ':00')
+  help_changed := help_choice;
+  language_changed := language_choice
 function key_press(value, timestamp)
   handled := false;
-  when (or(value = 'l', value = 'L'), (hour := hour + 1; when(hour > 23, (hour := 0; day := day + 1)); handled := true));
-  when (or(value = 'j', value = 'J'), (hour := hour - 1; when(hour < 0, (hour := 23; day := day - 1)); handled := true));
+  when (or(value = 'l', value = 'L'), (hour := hour + 0.25; when(hour >= 24, (hour := hour - 24; day := day + 1)); handled := true));
+  when (or(value = 'j', value = 'J'), (hour := hour - 0.25; when(hour < 0, (hour := hour + 24; day := day - 1)); handled := true));
   when (or(value = 'm', value = 'M'), (day := day + day_step; handled := true));
   when (or(value = 'n', value = 'N'), (day := day - day_step; handled := true));
   when (or(value = 'o', value = 'O'), (day := day + week_step; handled := true));
   when (or(value = 'u', value = 'U'), (day := day - week_step; handled := true));
   when (or(value = 'c', value = 'C'), (diagram_choice := -1 - diagram_choice; diagram_changed := diagram_choice; handled := true));
+  when (or(value = 'h', value = 'H'), (help_choice := -1 - help_choice; help_changed := help_choice));
+  when (or(value = 'i', value = 'I'), (language_choice := 1 - language_choice; language_changed := language_choice));
   when (or(value = 'r', value = 'R'), (day := initial_day; hour := initial_hour; handled := true));
   when (day > days_in_year, day := day - days_in_year);
   when (day < 1, day := day + days_in_year);
-  when (handled, (state_changed := vector(float(day), float(hour)); label_changed := array('SOLAR ' + string(year) + '  |  DIA ' + string(day) + '  |  ' + string(hour) + ':00'); writeln('Solar: dia ' + string(day) + ', hora ' + string(hour) + ':00')))
+  when (handled, (state_changed := vector(float(day), float(hour)); writeln('Solar: dia ' + string(day) + ', hora decimal ' + string(hour))))
 """.strip()
 
 
@@ -2726,6 +2791,11 @@ def _solar_calculator_castlescript() -> str:
 function state(value, timestamp)
   day := vector_get(value, 0);
   hour := vector_get(value, 1);
+  minute := int(round((hour - int(hour)) * 60));
+  time_suffix := ':00';
+  when (minute = 15, time_suffix := ':15');
+  when (minute = 30, time_suffix := ':30');
+  when (minute = 45, time_suffix := ':45');
   b_angle := (2 * pi / 365) * (day - 81);
   equation_time := 9.87 * sin(2 * b_angle) - 7.53 * cos(b_angle) - 1.5 * sin(b_angle);
   declination := (23.45 * pi / 180) * sin((2 * pi / 365) * (284 + day));
@@ -2734,6 +2804,29 @@ function state(value, timestamp)
   sun_east := -cos(declination) * sin(hour_angle);
   sun_north := cos(latitude_rad) * sin(declination) - sin(latitude_rad) * cos(declination) * cos(hour_angle);
   sun_up := sin(latitude_rad) * sin(declination) + cos(latitude_rad) * cos(declination) * cos(hour_angle);
+  altitude_deg := arcsin(max(-1, min(1, sun_up))) * 180 / pi;
+  azimuth := 0;
+  when (abs(sun_north) > 0.0001, azimuth := arctan(sun_east / sun_north));
+  when (sun_north < 0, azimuth := azimuth + pi);
+  when (and(abs(sun_north) <= 0.0001, sun_east >= 0), azimuth := pi / 2);
+  when (and(abs(sun_north) <= 0.0001, sun_east < 0), azimuth := -pi / 2);
+  when (azimuth < 0, azimuth := azimuth + 2 * pi);
+  azimuth_deg := azimuth * 180 / pi;
+  month := 1;
+  month_day := day;
+  feb_days := 28;
+  when (days_in_year = 366, feb_days := 29);
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > feb_days, (month_day := month_day - feb_days; month := month + 1));
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > 30, (month_day := month_day - 30; month := month + 1));
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > 30, (month_day := month_day - 30; month := month + 1));
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > 30, (month_day := month_day - 30; month := month + 1));
+  when (month_day > 31, (month_day := month_day - 31; month := month + 1));
+  when (month_day > 30, (month_day := month_day - 30; month := month + 1));
   model_east := sun_east * cos(north_rad) + sun_north * sin(north_rad);
   model_north := -sun_east * sin(north_rad) + sun_north * cos(north_rad);
   direction_changed := vector(-model_east, -sun_up, model_north);
@@ -2749,7 +2842,9 @@ function state(value, timestamp)
   when (sun_up <= 0, sun_transparency_changed := 1);
   daylight := max(0, min(1, sun_up * 2));
   intensity_changed := base_intensity * daylight;
-  ambient_changed := night_ambient + (base_ambient - night_ambient) * daylight
+  ambient_changed := night_ambient + (base_ambient - night_ambient) * daylight;
+  label_changed := array('SOLAR  ' + string(int(month_day)) + '/' + string(int(month)) + '/' + string(year), 'DAY ' + string(int(day)) + '  |  ' + string(int(hour)) + time_suffix, 'ALT ' + string(int(round(altitude_deg))) + ' deg  |  AZ ' + string(int(round(azimuth_deg))) + ' deg');
+  label_es_changed := array('SOLAR  ' + string(int(month_day)) + '/' + string(int(month)) + '/' + string(year), 'DÍA ' + string(int(day)) + '  |  ' + string(int(hour)) + time_suffix, 'ALT ' + string(int(round(altitude_deg))) + ' deg  |  AZ ' + string(int(round(azimuth_deg))) + ' deg')
 """.strip()
 
 
@@ -2811,6 +2906,7 @@ def _make_solar_visualization(
     visualization: Dict[str, object],
     *,
     days_in_year: int,
+    initial_sun: Tuple[float, float, float],
     latitude_deg: float,
     longitude_deg: float,
     timezone_hours: float,
@@ -2818,15 +2914,12 @@ def _make_solar_visualization(
 ):
     """Build a Solar-like world compass, sun sphere and path diagram."""
     radius = float(visualization["radius_m"])
-    switch = ET.Element(
-        q("Switch"),
-        {
-            "DEF": switch_def,
-            "whichChoice": "0" if bool(visualization.get("enabled", True)) else "-1",
-        },
+    collision = ET.Element(
+        q("Collision"),
+        {"DEF": SOLAR_CONTROL_DEF_PREFIX + "VisualizationCollision", "enabled": "false"},
     )
     root = ET.SubElement(
-        switch,
+        collision,
         q("Transform"),
         {
             "DEF": SOLAR_CONTROL_DEF_PREFIX + "VisualizationRoot",
@@ -2834,9 +2927,11 @@ def _make_solar_visualization(
         },
     )
 
+    switch = ET.SubElement(root, q("Switch"), {"DEF": switch_def, "whichChoice": "-1"})
+    diagram = ET.SubElement(switch, q("Group"))
     diagram_color = visualization["diagram_color"]
     compass_lines = _solar_compass_polylines(radius)
-    _append_solar_line_shape(root, q, compass_lines, diagram_color, transparency=0.15)
+    _append_solar_line_shape(diagram, q, compass_lines, diagram_color, transparency=0.15)
 
     path_groups = _solar_path_polylines(
         radius,
@@ -2847,28 +2942,28 @@ def _make_solar_visualization(
         north_deg=north_deg,
     )
     _append_solar_line_shape(
-        root,
+        diagram,
         q,
         path_groups["morning"],
         (0.2, 0.8, 1.0),
         transparency=0.08,
     )
     _append_solar_line_shape(
-        root,
+        diagram,
         q,
         path_groups["midday"],
         (1.0, 0.75, 0.0),
         transparency=0.02,
     )
     _append_solar_line_shape(
-        root,
+        diagram,
         q,
         path_groups["afternoon"],
         (1.0, 0.35, 0.0),
         transparency=0.08,
     )
     _append_solar_line_shape(
-        root,
+        diagram,
         q,
         _solar_hour_polylines(
             radius,
@@ -2882,8 +2977,8 @@ def _make_solar_visualization(
         transparency=0.48,
     )
 
-    _append_solar_north_arrow(root, q, radius, north_deg)
-    _append_solar_cardinal_labels(root, q, radius, north_deg)
+    _append_solar_north_arrow(diagram, q, radius, north_deg)
+    _append_solar_cardinal_labels(diagram, q, radius, north_deg)
 
     _append_solar_ray(
         root,
@@ -2894,11 +2989,23 @@ def _make_solar_visualization(
         float(visualization["sun_radius_m"]),
         visualization["sun_color"],
     )
+    # Castle may initialize Script before ROUTEs are connected. Persist the
+    # already-calculated initial state as geometry, just as for the light/HUD.
+    initial_position = (initial_sun[0] * radius, initial_sun[2] * radius,
+                        -initial_sun[1] * radius)
+    ray = next(n for n in root.iter() if n.attrib.get("DEF") == ray_transform_def)
+    ray.set("translation", _format_vec(tuple(v * 0.5 for v in initial_position)))
+    unit = tuple(v / radius for v in initial_position)
+    axis_length = math.hypot(unit[0], unit[1])
+    axis = (-unit[1] / axis_length, unit[0] / axis_length, 0.0) if axis_length > 1e-9 else (1.0, 0.0, 0.0)
+    ray.set("rotation", _format_vec(axis + (math.acos(_clamp(unit[2], -1.0, 1.0)),)))
+    initial_transparency = "1" if initial_sun[2] <= 0 else "0"
+    next(n for n in ray.iter() if n.attrib.get("DEF") == ray_material_def).set("transparency", initial_transparency)
 
     sun_transform = ET.SubElement(
         root,
         q("Transform"),
-        {"DEF": sun_transform_def},
+        {"DEF": sun_transform_def, "translation": _format_vec(initial_position)},
     )
     sun_shape = ET.SubElement(sun_transform, q("Shape"))
     sun_appearance = ET.SubElement(sun_shape, q("Appearance"))
@@ -2910,7 +3017,7 @@ def _make_solar_visualization(
             "DEF": sun_material_def,
             "diffuseColor": _format_vec(sun_color),
             "emissiveColor": _format_vec(sun_color),
-            "transparency": "0",
+            "transparency": initial_transparency,
         },
     )
     ET.SubElement(
@@ -2918,7 +3025,7 @@ def _make_solar_visualization(
         q("Sphere"),
         {"radius": _format_float(float(visualization["sun_radius_m"]))},
     )
-    return switch
+    return collision
 
 
 def _append_solar_ray(
@@ -3237,16 +3344,53 @@ def _append_solar_cardinal_labels(parent, q, radius: float, north_deg: float) ->
         )
 
 
+def _solar_hud_export_language(control: Dict[str, object]) -> str:
+    """Use English unless FreeCAD is explicitly or effectively in Spanish.
+
+    The preference is read only when preparing the X3D; the generated file
+    subsequently switches languages with the I key without needing FreeCAD.
+    """
+    override = str(control.get("hud_language", "auto") or "auto").strip().casefold()
+    if override in ("es", "es-es", "es-cr", "spanish", "español", "espanol"):
+        return "es"
+    if override in ("en", "english", "en-us", "en-gb"):
+        return "en"
+    language = ""
+    try:
+        freecad = __import__("FreeCAD")
+        prefs = freecad.ParamGet("User parameter:BaseApp/Preferences/General")
+        language = str(prefs.GetString("Language", "") or "").strip().casefold()
+    except (ImportError, AttributeError, RuntimeError, TypeError):
+        pass
+    # FreeCAD's General/Language stores names such as "Spanish". With no
+    # preference FreeCAD uses QLocale; ask it if available, default to English.
+    if not language:
+        for binding in ("PySide2", "PySide6", "PySide"):
+            try:
+                qtcore = __import__(binding, fromlist=["QtCore"]).QtCore
+                language = str(qtcore.QLocale().name() or "").casefold()
+                break
+            except (ImportError, AttributeError, RuntimeError):
+                continue
+    return "es" if (
+        language in ("es", "spanish", "español", "espanol")
+        or language.startswith(("es_", "es-", "spanish "))
+    ) else "en"
+
+
 def _make_solar_hud(
     q,
     hud_def: str,
     text_def: str,
+    help_switch_def: str,
     compass_dial_def: str,
     year: int,
     day: int,
     hour: int,
+    initial_sun: Tuple[float, float, float],
+    initial_language_choice: int = 0,
 ):
-    """Create a near-camera HUD that remains in front of walk-mode walls."""
+    """Create a compact corner HUD that remains in front of scene geometry."""
     collision = ET.Element(
         q("Collision"),
         {"DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDCollision", "enabled": "false"},
@@ -3257,65 +3401,158 @@ def _make_solar_hud(
         q("Transform"),
         {
             "DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDPanel",
-            "translation": "-0.138 0.086 -0.18",
-            "scale": "0.04125 0.04125 0.04125",
+            "translation": "0 0 -0.5",
+            "scale": "0.025 0.025 0.025",
         },
     )
-    backdrop = ET.SubElement(panel, q("Transform"), {"translation": "1.025 -0.08 -0.03"})
+    _append_solar_hud_screen_effect(panel, q, right=False)
+    backdrop = ET.SubElement(panel, q("Transform"), {"translation": "0.81818 -0.0236 -0.03"})
     backdrop_shape = ET.SubElement(backdrop, q("Shape"))
     backdrop_appearance = ET.SubElement(backdrop_shape, q("Appearance"))
     _append_hud_unlit_material(
         backdrop_appearance,
         q,
         (0.012, 0.025, 0.055),
-        transparency=0.06,
+        transparency=0.28,
     )
-    ET.SubElement(backdrop_shape, q("Box"), {"size": "2.05 0.62 0.025"})
+    ET.SubElement(backdrop_shape, q("Box"), {"size": "1.63636 0.72727 0.025"})
 
     _append_hud_line_shape(
         panel,
         q,
         [
-            [(0.0, 0.23, 0.01), (2.05, 0.23, 0.01), (2.05, -0.39, 0.01),
-             (0.0, -0.39, 0.01), (0.0, 0.23, 0.01)],
-            [(0.04, 0.015, 0.012), (2.01, 0.015, 0.012)],
+            [(0.0, 0.34, 0.01), (1.63636, 0.34, 0.01), (1.63636, -0.38727, 0.01),
+             (0.0, -0.38727, 0.01), (0.0, 0.34, 0.01)],
+            [(0.05, -0.20, 0.012), (1.58636, -0.20, 0.012)],
         ],
         (0.08, 0.72, 1.0),
         line_width=2.0,
     )
 
-    indicator = ET.SubElement(
-        panel,
-        q("Transform"),
-        {"translation": "0.09 0.13 0.035"},
+    # One shared panel/background, two text languages selected at runtime.
+    # The Sun/azimuth calculator updates BOTH Text nodes, including the hidden
+    # one, so changing language never shows stale dates or angles.
+    language_switch = ET.SubElement(
+        panel, q("Switch"),
+        {"DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDLanguageSwitch",
+         "whichChoice": str(initial_language_choice)},
     )
-    indicator_shape = ET.SubElement(indicator, q("Shape"))
-    indicator_appearance = ET.SubElement(indicator_shape, q("Appearance"))
-    _append_hud_unlit_material(indicator_appearance, q, (1.0, 0.68, 0.08))
-    ET.SubElement(indicator_shape, q("Sphere"), {"radius": "0.042"})
-
-    _append_hud_text(
-        panel,
-        q,
-        f"SOLAR {year}  |  DIA {day}  |  {hour}:00",
-        translation=(0.17, 0.13, 0.04),
-        color=(1.0, 1.0, 1.0),
-        size=0.115,
-        def_name=text_def,
-        style="BOLD",
+    for locale, definition in (("en", text_def), ("es", SOLAR_CONTROL_DEF_PREFIX + "HUDTextES")):
+        group = ET.SubElement(language_switch, q("Group"))
+        _append_hud_text(
+            group, q,
+            _solar_hud_initial_lines(year, day, hour, initial_sun, language=locale),
+            translation=(0.12, 0.07, 0.04),
+            color=(1.0, 1.0, 1.0),
+            size=0.086, def_name=definition,
+            style="PLAIN", spacing=1.35, max_extent=1.39,
+        )
+    hint_switch = ET.SubElement(
+        panel, q("Switch"),
+        {"DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDHintLanguageSwitch",
+         "whichChoice": str(initial_language_choice)},
     )
-    _append_hud_text(
-        panel,
-        q,
-        ("J/L  HORA     N/M  DIA     U/O  SEMANA", "C  DIAGRAMA        R  REINICIAR"),
-        translation=(0.08, -0.17, 0.04),
-        color=(0.58, 0.84, 1.0),
-        size=0.082,
-        def_name=SOLAR_CONTROL_DEF_PREFIX + "HUDHelp",
-        spacing=1.35,
+    for label in ("H  HELP    I  LANGUAGE", "H  AYUDA   I  IDIOMA"):
+        group = ET.SubElement(hint_switch, q("Group"))
+        _append_hud_text(
+            group, q, label,
+            translation=(0.12, -0.31, 0.04),
+            color=(0.58, 0.84, 1.0), size=0.072,
+            max_extent=1.39,
+        )
+    help_switch = ET.SubElement(
+        panel, q("Switch"),
+        {"DEF": help_switch_def, "whichChoice": "-1"},
     )
-    _append_hud_compass(hud, q, compass_dial_def)
+    help_panel = ET.SubElement(
+        help_switch, q("Transform"), {"translation": "0 -0.94 0"},
+    )
+    help_backdrop = ET.SubElement(
+        help_panel, q("Transform"), {"translation": "0.81818 0.22 -0.03"},
+    )
+    help_shape = ET.SubElement(help_backdrop, q("Shape"))
+    help_appearance = ET.SubElement(help_shape, q("Appearance"))
+    _append_hud_unlit_material(
+        help_appearance, q, (0.012, 0.025, 0.055), transparency=0.22,
+    )
+    ET.SubElement(help_shape, q("Box"), {"size": "1.63636 0.62 0.025"})
+    help_language_switch = ET.SubElement(
+        help_panel, q("Switch"),
+        {"DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDHelpLanguageSwitch",
+         "whichChoice": str(initial_language_choice)},
+    )
+    for rows in (
+        (
+            "J/L  15 MIN     N/M  DAY",
+            "U/O  WEEK       C  DIAGRAM",
+            "R  RESET       H  CLOSE",
+            "I  LANGUAGE",
+        ),
+        (
+            "J/L  15 MIN     N/M  DÍA",
+            "U/O  SEMANA     C  DIAGRAMA",
+            "R  REINICIAR   H  CERRAR",
+            "I  IDIOMA",
+        ),
+    ):
+        group = ET.SubElement(help_language_switch, q("Group"))
+        _append_hud_text(
+            group, q, rows,
+            translation=(0.12, 0.33, 0.04),
+            color=(0.74, 0.90, 1.0), size=0.064,
+            spacing=1.30, max_extent=1.39,
+        )
+    _append_hud_compass(hud, q, compass_dial_def, initial_language_choice)
     return collision
+
+
+def _solar_hud_initial_lines(
+    year: int,
+    day: int,
+    hour: int,
+    sun: Tuple[float, float, float],
+    language: str = "en",
+) -> Tuple[str, str, str]:
+    """Format the same date and angles shown by the runtime calculator."""
+    calendar_date = datetime.date(int(year), 1, 1) + datetime.timedelta(days=int(day) - 1)
+    east, north, up = (float(value) for value in sun)
+    altitude = math.degrees(math.asin(_clamp(up, -1.0, 1.0)))
+    azimuth = math.degrees(math.atan2(east, north)) % 360.0
+    return (
+        "SOLAR  {}/{}/{}".format(
+            calendar_date.day, calendar_date.month, calendar_date.year
+        ),
+        "{} {}  |  {}:00".format(
+            "DÍA" if language == "es" else "DAY", int(day), int(hour)
+        ),
+        "ALT {} deg  |  AZ {} deg".format(int(round(altitude)), int(round(azimuth))),
+    )
+
+
+def _append_solar_hud_screen_effect(parent, q, *, right: bool) -> None:
+    """Anchor in screen space, scaling isotropically with the shorter viewport side.
+
+    Castle does not implement X3D Layout. Its vertex Effect keeps normal Text
+    rendering and the existing compass routes, but removes FOV/aspect drift.
+    Keep clearance below Viewer controls while placing both overlays higher.
+    CPU geometry remains camera-local, so it is visible to frustum culling.
+    """
+    effect = ET.SubElement(parent, q("Effect"), {"language": "GLSL"})
+    anchor = "1.0 - 0.16 * ratio.x" if right else "-1.0 + 0.05 * ratio.x"
+    source = """uniform mat4 castle_ProjectionMatrix;
+void PLUG_vertex_eye_space(inout vec4 vertex_eye, const in vec3 normal_eye)
+{
+    vec2 projection = vec2(castle_ProjectionMatrix[0][0], castle_ProjectionMatrix[1][1]);
+    vec2 ratio = projection / max(projection.x, projection.y);
+    vec2 local = vertex_eye.xy / 0.025;
+    vec2 screen = vec2(ANCHOR, 1.0 - 0.27 * ratio.y) + local * 0.44 * ratio;
+    // Keep the overlay in front, but inside the camera's actual near plane.
+    float near_clip = castle_ProjectionMatrix[3][2] / (castle_ProjectionMatrix[2][2] - 1.0);
+    vertex_eye.z = -near_clip * 1.05 + (vertex_eye.z + 0.5) * 0.01;
+    vertex_eye.xy = screen * (-vertex_eye.z) / projection;
+}
+""".replace("ANCHOR", anchor)
+    ET.SubElement(effect, q("EffectPart"), {"type": "VERTEX", "url": _x3d_mfstring("data:text/plain," + source)})
 
 
 def _append_hud_unlit_material(
@@ -3350,6 +3587,7 @@ def _append_hud_text(
     spacing: float = 1.0,
     style: str = "PLAIN",
     justify: str = "BEGIN",
+    max_extent: float = 0.0,
 ) -> None:
     transform = ET.SubElement(
         parent,
@@ -3366,6 +3604,8 @@ def _append_hud_text(
     }
     if def_name:
         attrs["DEF"] = def_name
+    if max_extent:
+        attrs["maxExtent"] = _format_float(max_extent)
     text = ET.SubElement(shape, q("Text"), attrs)
     ET.SubElement(
         text,
@@ -3437,16 +3677,17 @@ def _append_hud_triangle(parent, q, points, color: object) -> None:
     )
 
 
-def _append_hud_compass(parent, q, dial_def: str) -> None:
+def _append_hud_compass(parent, q, dial_def: str, initial_language_choice: int = 0) -> None:
     anchor = ET.SubElement(
         parent,
         q("Transform"),
         {
             "DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDCompass",
-            "translation": "0.125 0.083 -0.178",
-            "scale": "0.010875 0.010875 0.010875",
+            "translation": "0 0 -0.498",
+            "scale": "0.006 0.006 0.006",
         },
     )
+    _append_solar_hud_screen_effect(anchor, q, right=True)
     backdrop = ET.SubElement(anchor, q("Transform"), {"translation": "0 0 -0.04"})
     backdrop_shape = ET.SubElement(backdrop, q("Shape"))
     backdrop_appearance = ET.SubElement(backdrop_shape, q("Appearance"))
@@ -3454,9 +3695,9 @@ def _append_hud_compass(parent, q, dial_def: str) -> None:
         backdrop_appearance,
         q,
         (0.012, 0.025, 0.055),
-        transparency=0.04,
+        transparency=0.42,
     )
-    ET.SubElement(backdrop_shape, q("Box"), {"size": "2.30 2.30 0.03"})
+    ET.SubElement(backdrop_shape, q("Box"), {"size": "2.18 2.18 0.03"})
 
     outer_ring = [
         (
@@ -3522,7 +3763,6 @@ def _append_hud_compass(parent, q, dial_def: str) -> None:
         ("N", 0.0, 0.61, (1.0, 0.2, 0.08)),
         ("E", 0.61, 0.0, (1.0, 1.0, 1.0)),
         ("S", 0.0, -0.61, (1.0, 1.0, 1.0)),
-        ("O", -0.61, 0.0, (1.0, 1.0, 1.0)),
     ):
         _append_hud_text(
             dial,
@@ -3535,6 +3775,20 @@ def _append_hud_compass(parent, q, dial_def: str) -> None:
             style="BOLD",
             justify="MIDDLE",
         )
+    west_switch = ET.SubElement(
+        dial, q("Switch"),
+        {"DEF": SOLAR_CONTROL_DEF_PREFIX + "HUDWestLanguageSwitch",
+         "whichChoice": str(initial_language_choice)},
+    )
+    for west_label in ("W", "O"):
+        group = ET.SubElement(west_switch, q("Group"))
+        _append_hud_text(
+            group, q, west_label,
+            translation=(-0.61, 0.0, 0.06),
+            color=(1.0, 1.0, 1.0), size=0.24,
+            style="BOLD",
+        )
+
 
     hub = ET.SubElement(
         dial,
@@ -4445,6 +4699,34 @@ def _log_skipped_objects(skipped: List[Tuple[str, str, str]], max_rows: int = 25
         FreeCAD.Console.PrintWarning(LOG_PREFIX + f"SKIP: {label} [{type_id}] -> {reason}\n")
     if len(skipped) > max_rows:
         FreeCAD.Console.PrintWarning(LOG_PREFIX + f"... and {len(skipped) - max_rows} more skipped\n")
+
+
+def _is_solar_representation(obj: object) -> bool:
+    """Identify Solar's own snapshot sphere/ray using ownership, not a label.
+
+    An unrelated SunLight sphere must remain exportable. Solar's property group
+    and proxy survive save/restore; do not import or mutate Solar to identify it.
+    """
+    for parent in list(getattr(obj, "InList", []) or []):
+        proxy = getattr(parent, "Proxy", None)
+        solar_owner = (
+            type(proxy).__module__ == "freecad.Solar.SunProperties"
+            and type(proxy).__name__ == "SunProperties"
+        )
+        if not solar_owner:
+            continue
+        if obj not in list(getattr(parent, "Group", []) or []):
+            continue
+        name = str(getattr(obj, "Name", ""))
+        type_id = str(getattr(obj, "TypeId", ""))
+        if type_id == "Part::Sphere" and re.fullmatch(r"SunLight\d*", name):
+            return True
+        child_proxy = getattr(obj, "Proxy", None)
+        if (re.fullmatch(r"(?:Line|Wire|RayLine)\d*", name)
+                and type(child_proxy).__name__ == "Wire"
+                and type(child_proxy).__module__ in ("draftobjects.wire", "Draft")):
+            return True
+    return False
 
 
 def _is_exportable_object(obj: object) -> Tuple[bool, str]:

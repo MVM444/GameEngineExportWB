@@ -34,6 +34,7 @@ COMMAND_MODULE_NAMES = (
     "freecad.GameEngineExportWB.commands.cmd_analyze_x3d",
     "freecad.GameEngineExportWB.commands.cmd_castle_diagnostics",
     "freecad.GameEngineExportWB.commands.cmd_add_light_properties",
+    "freecad.GameEngineExportWB.commands.cmd_integrate_solar",
     "freecad.GameEngineExportWB.commands.cmd_quick_examples",
     "freecad.GameEngineExportWB.commands.cmd_import_json_example",
     "freecad.GameEngineExportWB.commands.cmd_bim_doors_windows",

@@ -245,6 +245,7 @@ def workbench_registration_checks(result):
     from freecad.GameEngineExportWB.commands import cmd_export_and_launch
     from freecad.GameEngineExportWB.commands import cmd_help
     from freecad.GameEngineExportWB.commands import cmd_import_json_example
+    from freecad.GameEngineExportWB.commands import cmd_integrate_solar
     from freecad.GameEngineExportWB.commands import cmd_open_panel
     from freecad.GameEngineExportWB.commands import cmd_quick_examples
     from freecad.GameEngineExportWB.commands import cmd_reload_workbench
@@ -257,9 +258,8 @@ def workbench_registration_checks(result):
         cmd_open_panel.CommandClass.CommandName,
         cmd_help.CommandClass.CommandName,
         cmd_add_light_properties.CommandClass.CommandName,
+        cmd_integrate_solar.CommandClass.CommandName,
         cmd_import_json_example.CommandClass.CommandName,
-        cmd_bim_doors_windows.CommandClass.CommandName,
-        cmd_roof_quick_example.CommandClass.CommandName,
         cmd_analyze_x3d.CommandClass.CommandName,
         cmd_castle_diagnostics.CommandClass.CommandName,
     }
@@ -280,7 +280,15 @@ def workbench_registration_checks(result):
         "Game Engine Export - Diagnostics",
     }
     require(expected_titles.issubset(toolbar_titles), f"Toolbar titles missing: {toolbar_titles}")
-    for command_name in expected | {cmd_reload_workbench.CommandClass.CommandName}:
+    # Retired BIM shortcuts remain registered for compatibility, not in toolbars.
+    registered_only = {
+        cmd_reload_workbench.CommandClass.CommandName,
+        cmd_bim_doors_windows.CommandClass.CommandName,
+        cmd_roof_quick_example.CommandClass.CommandName,
+    }
+    for command_name in registered_only:
+        require(command_name not in toolbar_items, f"Menu/compatibility command in toolbar: {command_name}")
+    for command_name in expected | registered_only:
         require(command_name in set(FreeCADGui.listCommands()), f"Command not registered: {command_name}")
     command_classes = (
         cmd_quick_examples.CommandClass,
@@ -288,6 +296,7 @@ def workbench_registration_checks(result):
         cmd_open_panel.CommandClass,
         cmd_help.CommandClass,
         cmd_add_light_properties.CommandClass,
+        cmd_integrate_solar.CommandClass,
         cmd_import_json_example.CommandClass,
         cmd_bim_doors_windows.CommandClass,
         cmd_roof_quick_example.CommandClass,

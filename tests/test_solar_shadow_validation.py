@@ -86,6 +86,8 @@ class SolarShadowValidationTest(unittest.TestCase):
         self.assertNotIn("shadowVolumes", node.attrib)
         self.assertNotIn("shadowVolumesMain", node.attrib)
         self.assertNotIn("shadowMapSize", node.attrib)
+        self.assertEqual([], list(node))
+
         self.assertNotIn("defaultShadowMap", node.attrib)
 
 

@@ -149,7 +149,7 @@ Reglas de ventana:
 El Workbench separa los comandos en tres barras para que los iconos indiquen el tipo de trabajo:
 
 - **Game Engine Export**: `Ejemplo rapido`, `Ejecutar en Castle`, `Exportar X3D` y `Ayuda`. Los dos primeros forman el flujo minimo para comenzar.
-- **Game Engine Export - Escena / IA**: propiedades de luz, `Importar JSON / IA`, puertas/ventanas BIM y techo.
+- **Game Engine Export - Escena / IA**: propiedades de luz, `Integrar con Solar`, `Importar JSON / IA`, puertas/ventanas BIM y techo.
 - **Game Engine Export - Diagnostico**: `Analizar X3D` y `Diagnostico Castle`.
 
 `Recargar Workbench` se mantiene en el menu, pero no ocupa una barra de usuario porque es principalmente una herramienta de desarrollo.
@@ -169,6 +169,15 @@ Al activar el Workbench se muestra una ventana corta de primeros pasos una sola 
 ## Materiales e iluminacion interior
 
 ### Integracion opcional con Solar Workbench
+
+El comando y el boton **Integrar con Solar / Integrate with Solar** abren el
+comando registrado `SunPathDialog` de Solar sin cambiar el Workbench activo. Solar crea
+o reutiliza su propio objeto `SunProperties` y conserva la responsabilidad de
+calcular la posicion solar. Solo despues de **Aplicar** o **Aceptar**,
+`solar_adapter` lee el resultado y actualiza las preferencias solares ya usadas
+por GEEWB; **Cancelar** deja GEEWB intacto. Si Solar
+no esta instalado, el comando muestra una advertencia y las demas funciones
+permanecen disponibles.
 
 En **Iluminacion / Lighting > Luz global / Global light** se puede activar
 **Usar Solar Workbench / Use Solar Workbench**. GameEngineExport lee, sin
@@ -190,8 +199,10 @@ incorpora una esfera amarilla que sigue la posicion calculada del sol, el rayo
 con flecha desde esa esfera hasta el centro del diagrama y un diagrama
 hemisferico 3D con trayectorias estacionales y curvas horarias. Ya dentro
 de Castle Model Viewer se usan `J/L` para retroceder o avanzar una hora, `N/M`
-para un dia, `U/O` para siete dias, `C` para ocultar o mostrar solo el diagrama 3D y `R`
-para regresar a la fecha y hora exportadas. La direccion, intensidad,
+para un dia, `U/O` para siete dias, `C` para ocultar o mostrar el diagrama 3D,
+`H` para mostrar la ayuda detallada y `R` para regresar a la fecha y hora
+exportadas. El HUD compacto muestra fecha, dia del ano, hora, altura y azimut;
+el diagrama y la ayuda detallada comienzan ocultos. La direccion, intensidad,
 componente ambiental y esfera solar se recalculan dentro del X3D; de noche la
 luz solar baja a cero y la esfera se oculta. FreeCAD y Solar no son necesarios
 despues de exportar. Esta funcion no calcula irradiacion ni convierte Sky
