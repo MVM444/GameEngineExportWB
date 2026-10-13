@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freecad-gameengineexportwb"
+version = "0.3.0"
+description = "FreeCAD Workbench for exporting CAD/BIM scenes to X3D for Castle Game Engine."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Marco Vinicio Mora Fallas" }]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["freecad.GameEngineExportWB*"]
+namespaces = true
+exclude = ["*.__pycache__"]
+
+[tool.setuptools.package-data]
+"freecad.GameEngineExportWB" = [
+  "AI_CONTEXT.md",
+  "macros/*.FCMacro",
+  "resources/icons/*.svg",
+  "resources/textures/*",
+  "resources/translations/*",
+]

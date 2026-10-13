@@ -9,7 +9,7 @@ Date and time: 2026-08-19 17:35 -06:00
 from pathlib import Path
 import unittest
 
-from GameEngineExportWB.core import material_assignments as ma
+from freecad.GameEngineExportWB.core import material_assignments as ma
 
 
 class FakeObject:

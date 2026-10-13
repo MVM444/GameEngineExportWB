@@ -14,7 +14,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-AI_CONTEXT = ROOT / "AI_CONTEXT.md"
+AI_CONTEXT = ROOT / "freecad" / "GameEngineExportWB" / "AI_CONTEXT.md"
 
 
 class AIContextTests(unittest.TestCase):

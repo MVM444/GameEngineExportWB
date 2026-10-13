@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 try:
-    from GameEngineExportWB.core import x3d_analyzer
+    from freecad.GameEngineExportWB.core import x3d_analyzer
 except ImportError:
     import x3d_analyzer
 

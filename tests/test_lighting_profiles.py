@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "lighting_profiles.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "core" / "lighting_profiles.py"
 SPEC = importlib.util.spec_from_file_location("gee_lighting_profiles_test", MODULE_PATH)
 lighting_profiles = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(lighting_profiles)

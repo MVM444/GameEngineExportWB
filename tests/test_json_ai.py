@@ -16,7 +16,7 @@ import unittest
 
 
 def _load_module():
-    path = Path(__file__).resolve().parents[1] / "core" / "json_ai.py"
+    path = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "core" / "json_ai.py"
     spec = importlib.util.spec_from_file_location("gee_json_ai", str(path))
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader

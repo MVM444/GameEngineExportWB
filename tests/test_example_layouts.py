@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 
-MODULE_PATH = Path(__file__).resolve().parents[1] / "core" / "example_layouts.py"
+MODULE_PATH = Path(__file__).resolve().parents[1] / "freecad" / "GameEngineExportWB" / "core" / "example_layouts.py"
 SPEC = importlib.util.spec_from_file_location("gee_example_layouts_test", MODULE_PATH)
 example_layouts = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(example_layouts)
