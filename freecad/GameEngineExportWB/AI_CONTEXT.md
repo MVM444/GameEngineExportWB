@@ -98,8 +98,8 @@ The optional interactive X3D solar control exports only neutral location,
 calendar, time-zone, and north metadata. The X3D contains a CastleScript
 controller that updates the DirectionalLight direction, intensity, ambient
 contribution, HUD altitude/azimuth and dynamic shadow projection at runtime.
-Controls are J/L for hours, N/M for days, U/O for seven-day steps, C for the
-initially hidden spatial diagram, H for on-demand help, and R to reset.
+Controls are J/L for 15-minute steps, N/M for days, U/O for seven-day steps, C for the
+initially hidden spatial diagram, H for on-demand help, I for English/Spanish, and R to reset.
 Generated controller nodes use the stable
 `GameExport_Solar` DEF prefix and decoration must remain idempotent.
 

@@ -14,9 +14,9 @@ FreeCAD -> GameEngineExportWB -> X3D -> Castle Model Viewer
 
 ## Estado actual / Current status
 
-Version publica actual `0.2.1` (2026-08-22). La DEV prepara `0.3.0` con la estructura moderna namespaced `freecad/GameEngineExportWB`. Ya existen exportacion X3D, lanzamiento de Castle, Quick Examples, GameStart, luces, perfiles visuales, analisis X3D, diagnostico Castle y ayuda integrada.
+Version `0.3.0` (2026-10-12), con la estructura moderna namespaced `freecad/GameEngineExportWB`. Incluye exportacion X3D, configuracion guiada y lanzamiento de Castle, Quick Examples, GameStart, luces, materiales, diagnostico Castle, integracion opcional con Solar y HUD bilingue. Revision de publicacion: 129 pruebas Python y smoke real en FreeCAD 1.1.4; conserva el minimo FreeCAD 1.1.3.
 
-Current public version `0.2.1` (2026-08-22). DEV is preparing `0.3.0` with the modern namespaced `freecad/GameEngineExportWB` layout. X3D export, Castle launch, Quick Examples, GameStart, lights, visual profiles, X3D analysis, Castle diagnostics and integrated help are already available.
+Version `0.3.0` (2026-10-12), using the modern namespaced `freecad/GameEngineExportWB` layout. Includes X3D export, guided Castle configuration and launch, Quick Examples, GameStart, lights, materials, Castle diagnostics, optional Solar integration and a bilingual HUD. Release review: 129 Python tests and a real FreeCAD 1.1.4 smoke test; minimum FreeCAD 1.1.3 is unchanged.
 
 La asignacion general de materiales/texturas por objeto ya esta implementada en fase experimental. Espejo, reflexiones y diagnostico visual inteligente requieren validacion adicional en Castle y modelos reales.
 
@@ -28,9 +28,9 @@ The UI is being migrated to true Spanish/English localization using FreeCAD/Qt t
 
 ## Instalacion / Installation
 
-El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB` y su rama principal es `main` (version publicada 0.2.1 con estructura anterior). Solo la DEV en Drive usa actualmente la estructura moderna: `package.xml` permanece en la raiz y el codigo bajo `freecad/GameEngineExportWB/`. No actualizar GitHub hasta aprobar las pruebas de FreeCAD 1.1.3.
+El repositorio publico dedicado es `https://github.com/MVM444/GameEngineExportWB`, rama `main`, version 0.3.0. `package.xml` permanece en la raiz y el codigo bajo `freecad/GameEngineExportWB/`. Addon Manager administra la instalacion y actualizacion; no mezcle carpetas de la estructura anterior con la moderna.
 
-The public repository is `https://github.com/MVM444/GameEngineExportWB` (`main`, published 0.2.1 with legacy layout). Only Drive DEV currently has the modern layout: `package.xml` stays at root and Workbench code lives under `freecad/GameEngineExportWB/`. Do not update GitHub until FreeCAD 1.1.3 smoke tests are approved.
+The public repository is `https://github.com/MVM444/GameEngineExportWB` (`main`, version 0.3.0). `package.xml` stays at root and Workbench code lives under `freecad/GameEngineExportWB/`. Addon Manager handles installation and updates; do not mix legacy and modern layout folders.
 
 ### Espanol
 
@@ -198,15 +198,20 @@ La brujula gira con la vista y usa el norte configurado en Solar. Tambien
 incorpora una esfera amarilla que sigue la posicion calculada del sol, el rayo
 con flecha desde esa esfera hasta el centro del diagrama y un diagrama
 hemisferico 3D con trayectorias estacionales y curvas horarias. Ya dentro
-de Castle Model Viewer se usan `J/L` para retroceder o avanzar una hora, `N/M`
+de Castle Model Viewer se usan `J/L` para retroceder o avanzar 15 minutos, `N/M`
 para un dia, `U/O` para siete dias, `C` para ocultar o mostrar el diagrama 3D,
-`H` para mostrar la ayuda detallada y `R` para regresar a la fecha y hora
+`H` para mostrar la ayuda detallada, `I` para alternar Ingles/Espanol y `R` para regresar a la fecha y hora
 exportadas. El HUD compacto muestra fecha, dia del ano, hora, altura y azimut;
 el diagrama y la ayuda detallada comienzan ocultos. La direccion, intensidad,
 componente ambiental y esfera solar se recalculan dentro del X3D; de noche la
 luz solar baja a cero y la esfera se oculta. FreeCAD y Solar no son necesarios
 despues de exportar. Esta funcion no calcula irradiacion ni convierte Sky
 Domes.
+
+Para inspeccionar el diagrama con `C`, se recomienda el modo **Examine** del
+visor. En **Walk/Fly**, Castle tambien usa `C` para agacharse o descender;
+una camara fuera del suelo puede caer por la gravedad del visor. Este atajo
+no restablece la camara; `R` restablece solamente la fecha y hora solares.
 
 Solar is an optional dependency. If it is not installed, the document has no
 valid `SunProperties` object, or the sun is below the horizon, export keeps the
@@ -219,11 +224,16 @@ of the camera instead of being hidden by walls. The compass rotates with the
 view and uses Solar's configured north. Castle Model Viewer also shows a moving
 sun sphere, its arrowed ray toward the diagram center, and a hemispherical 3D
 seasonal/hour path diagram. Use `J/L` for
-hours, `N/M` for days, `U/O` for seven-day steps, `C` to toggle only the 3D
-diagram, and `R` to reset.
+15-minute steps, `N/M` for days, `U/O` for seven-day steps, `C` to toggle only the 3D
+diagram, `H` for help, `I` to switch English/Spanish, and `R` to reset.
 Direction, intensity, ambient contribution, and the sun sphere update inside
 X3D, without FreeCAD or Solar at runtime. Irradiation and Sky Dome conversion
 remain outside this feature.
+
+Use **Examine** navigation when inspecting the diagram with `C`. In
+**Walk/Fly**, Castle also uses `C` to crouch or descend; a camera outside
+the floor can fall under viewer gravity. `R` resets solar date/time, not
+the camera. See the [Castle navigation reference](https://castle-engine.io/castle-model-viewer#section_navigating).
 
 En la pestana **Iluminacion / Lighting**, marca **Mejorar iluminacion interior / Improve interior lighting** y usa **Architectural** o **Bright** para interiores cerrados. Este ajuste solo modifica el X3D exportado mediante atributos `ambientIntensity`, `emissiveColor` y `shininess`; no cambia los materiales del archivo `.FCStd`.
 
