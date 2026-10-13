@@ -224,6 +224,7 @@ class CastleDiagnosticsTests(unittest.TestCase):
                 ["castle-model-converter.exe", str(x3d), "--validate"],
             )
             self.assertEqual(result["status"], "completed")
+            self.assertEqual(run.call_args.kwargs["stdin"], castle_diagnostics.subprocess.DEVNULL)
             self.assertEqual(
                 result["command"],
                 ["castle-model-converter.exe", "scene.x3d", "--validate"],

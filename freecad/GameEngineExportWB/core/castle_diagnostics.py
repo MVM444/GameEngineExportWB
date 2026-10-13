@@ -243,6 +243,9 @@ def _run_validation(
     try:
         completed = subprocess.run(
             command,
+            # FreeCAD GUI on Windows may have no usable console input handle.
+            # Validation is non-interactive; never inherit that handle.
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

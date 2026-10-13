@@ -761,6 +761,9 @@ def material_export_and_diagnostic_checks(result, castle_x3d=None):
             }
         )
         require(castle_info.get("status") == "completed", f"Castle capture failed: {castle_info}")
+        validation = final_manifest.get("validation") or {}
+        require(validation.get("status") == "completed" and validation.get("return_code") == 0,
+                f"Castle validation failed: {validation}")
         require(screenshot_path.is_file(), "Castle did not create the requested screenshot")
 
     result["materials"] = {
