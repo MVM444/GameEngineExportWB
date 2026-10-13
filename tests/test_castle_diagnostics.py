@@ -225,6 +225,8 @@ class CastleDiagnosticsTests(unittest.TestCase):
             )
             self.assertEqual(result["status"], "completed")
             self.assertEqual(run.call_args.kwargs["stdin"], castle_diagnostics.subprocess.DEVNULL)
+            expected_flags = getattr(castle_diagnostics.subprocess, "CREATE_NO_WINDOW", 0) if castle_diagnostics.os.name == "nt" else 0
+            self.assertEqual(run.call_args.kwargs["creationflags"], expected_flags)
             self.assertEqual(
                 result["command"],
                 ["castle-model-converter.exe", "scene.x3d", "--validate"],

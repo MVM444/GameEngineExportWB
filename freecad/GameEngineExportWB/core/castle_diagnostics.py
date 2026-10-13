@@ -243,9 +243,10 @@ def _run_validation(
     try:
         completed = subprocess.run(
             command,
-            # FreeCAD GUI on Windows may have no usable console input handle.
-            # Validation is non-interactive; never inherit that handle.
+            # FreeCAD GUI on Windows may have no usable console. Do not create
+            # a hidden console that can block a non-interactive converter.
             stdin=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
